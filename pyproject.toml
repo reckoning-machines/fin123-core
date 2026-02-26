@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "fin123-core"
-version = "0.2.1"
+version = "0.3.0"
 description = "Polars-backed financial workbook engine with local browser UI"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -40,3 +40,7 @@ include = ["src/fin123/**"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not pod' --ignore=tests/pod"
+markers = [
+    "pod: tests requiring fin123-pod modules (fin123.cli, fin123.sync, fin123.releases, fin123.workflows)",
+]

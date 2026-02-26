@@ -7,11 +7,14 @@ from pathlib import Path
 
 import click
 
-from fin123 import __version__
+from fin123 import __core_api_version__, __version__
 
 
 @click.group()
-@click.version_option(version=__version__, prog_name="fin123-core")
+@click.version_option(
+    version=f"{__version__} (core_api={__core_api_version__})",
+    prog_name="fin123-core",
+)
 def main() -> None:
     """fin123-core -- deterministic financial model engine with local UI.
 
@@ -706,3 +709,7 @@ def run_log_cmd(directory: str, run_id: str) -> None:
         if err:
             line += f"  ({err})"
         click.echo(line)
+
+
+if __name__ == "__main__":
+    main()

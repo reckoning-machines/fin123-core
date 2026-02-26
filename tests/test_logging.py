@@ -489,6 +489,7 @@ class TestGCLogIntegration:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestCLI:
     def test_events_command_no_events(self, tmp_path):
         from click.testing import CliRunner

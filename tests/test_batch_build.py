@@ -117,6 +117,7 @@ class TestSequentialBatch:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestBatchBuildCLI:
     @pytest.fixture
     def project_dir(self, tmp_path: Path) -> Path:

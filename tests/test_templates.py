@@ -25,6 +25,7 @@ from fin123.workbook import Workbook
 class TestTemplateList:
     """Test template listing and discovery."""
 
+    @pytest.mark.pod
     def test_list_returns_bundled_templates(self) -> None:
         """list_templates() returns at least the 5 bundled templates."""
         templates = list_templates()
@@ -82,7 +83,13 @@ class TestTemplateShow:
 class TestScaffoldBasic:
     """Test basic scaffold behavior for each template."""
 
-    @pytest.mark.parametrize("tpl_name", ["single_company", "universe_batch", "sql_datasheet", "demo_fin123", "plugin_example_connector"])
+    @pytest.mark.parametrize("tpl_name", [
+        "single_company",
+        "universe_batch",
+        pytest.param("sql_datasheet", marks=pytest.mark.pod),
+        "demo_fin123",
+        pytest.param("plugin_example_connector", marks=pytest.mark.pod),
+    ])
     def test_scaffold_creates_workbook(self, tmp_path: Path, tpl_name: str) -> None:
         """Scaffold from template creates workbook.yaml and snapshot."""
         project = tmp_path / tpl_name
@@ -98,7 +105,13 @@ class TestScaffoldBasic:
         # Initial snapshot v0001 must exist
         assert (project / "snapshots" / "workbook" / "v0001" / "workbook.yaml").exists()
 
-    @pytest.mark.parametrize("tpl_name", ["single_company", "universe_batch", "sql_datasheet", "demo_fin123", "plugin_example_connector"])
+    @pytest.mark.parametrize("tpl_name", [
+        "single_company",
+        "universe_batch",
+        pytest.param("sql_datasheet", marks=pytest.mark.pod),
+        "demo_fin123",
+        pytest.param("plugin_example_connector", marks=pytest.mark.pod),
+    ])
     def test_scaffold_and_build_succeeds(self, tmp_path: Path, tpl_name: str) -> None:
         """Scaffold + build produces outputs without errors."""
         project = tmp_path / tpl_name
@@ -160,6 +173,7 @@ class TestSingleCompany:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestSqlDatasheet:
     """Test sql_datasheet template specifics."""
 
@@ -283,6 +297,7 @@ class TestSubstitution:
         assert spec["params"]["ticker"] == "ACME"
         assert spec["params"]["currency"] == "USD"
 
+    @pytest.mark.pod
     def test_template_without_params_scaffolds(self, tmp_path: Path) -> None:
         """Template with no params section scaffolds cleanly."""
         project = tmp_path / "sd"
@@ -297,6 +312,7 @@ class TestSubstitution:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestTemplateCLI:
     """Test template CLI commands."""
 

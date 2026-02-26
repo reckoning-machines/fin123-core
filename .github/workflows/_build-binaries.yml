@@ -1,0 +1,55 @@
+name: Build Binaries (Reusable)
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to check out"
+        required: false
+        type: string
+        default: ""
+      version_override:
+        description: "Version string override (e.g. 0.3.0)"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            script: pwsh scripts/build_windows.ps1
+            script_args: ""
+            artifact_glob: "dist/fin123-core-*-windows-*.zip"
+          - os: macos-14
+            script: bash scripts/build_macos.sh
+            script_args: ""
+            artifact_glob: "dist/fin123-core-*-macos-*.zip"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e "." pyinstaller
+
+      - name: Build binary
+        run: ${{ matrix.script }} ${{ inputs.version_override }}
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: binaries-${{ matrix.os }}
+          path: ${{ matrix.artifact_glob }}
+          if-no-files-found: error

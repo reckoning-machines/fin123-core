@@ -200,6 +200,7 @@ class TestArtifactApproval:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestProdModeApprovalGate:
     """Test that prod-mode release blocks on unapproved artifacts."""
 
@@ -364,6 +365,7 @@ class TestProdModeApprovalGate:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestApprovalCLI:
     """Test artifact approve/reject/status CLI commands."""
 

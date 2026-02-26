@@ -399,6 +399,7 @@ class TestProdMode:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestVerifyBuildCLI:
     def test_verify_build_missing(self, project_dir):
         from click.testing import CliRunner
@@ -439,6 +440,7 @@ class TestVerifyBuildCLI:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestCommitCLI:
     def test_commit_creates_snapshot(self, project_dir):
         from click.testing import CliRunner
@@ -451,6 +453,7 @@ class TestCommitCLI:
         assert "Committed snapshot:" in result.output
 
 
+@pytest.mark.pod
 class TestScenarioCLI:
     def test_all_scenarios_no_scenarios(self, project_dir):
         from click.testing import CliRunner

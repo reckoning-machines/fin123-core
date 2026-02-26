@@ -372,6 +372,7 @@ class TestModelVersionGC:
 
 
 class TestClearCache:
+    @pytest.mark.pod
     def test_cli_dry_run_returns_summary(self, demo_project: Path):
         """CLI dry-run returns summary dict."""
         from click.testing import CliRunner
@@ -382,6 +383,7 @@ class TestClearCache:
         assert result.exit_code == 0
         assert "Clear-cache dry-run:" in result.output
 
+    @pytest.mark.pod
     def test_cli_real_run_deletes(self, demo_project: Path):
         """CLI real run clears cache."""
         # Create a hash cache

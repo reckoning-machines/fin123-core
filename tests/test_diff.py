@@ -215,6 +215,7 @@ class TestDiffVersion:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestDiffJSON:
     def test_diff_run_json(self, demo_project: Path) -> None:
         """--json outputs valid JSON with required top-level keys."""
@@ -290,6 +291,7 @@ class TestDiffJSON:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.pod
 class TestDiffErrors:
     def test_missing_run(self, demo_project: Path) -> None:
         """Missing run_id exits with code 2."""

@@ -75,6 +75,7 @@ def service(demo_project: Path) -> ProjectService:
 
 
 class TestServiceBasics:
+    @pytest.mark.pod
     def test_get_project_info(self, service: ProjectService) -> None:
         info = service.get_project_info()
         assert "project_dir" in info
@@ -225,6 +226,7 @@ class TestSyncAndWorkflow:
         assert isinstance(result, dict)
         assert "synced" in result
 
+    @pytest.mark.pod
     def test_workflow_run(self, service: ProjectService) -> None:
         """Running scenario_sweep workflow should succeed on demo project."""
         service.save_snapshot()
