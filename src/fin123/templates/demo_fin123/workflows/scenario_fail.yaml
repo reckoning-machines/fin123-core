@@ -1,0 +1,14 @@
+# Intentional failure scenario.
+# Sets discount_rate to 0.95 which violates the discount_rate_sane assertion.
+# Usage: fin123 workflow run scenario_fail <project_dir>
+name: scenario_fail
+description: Demonstrate assertion failure by setting an extreme discount_rate.
+steps:
+  - name: build_extreme
+    type: build
+    overrides:
+      discount_rate: 0.95
+
+  - name: verify_extreme
+    type: verify
+    input: "$steps.build_extreme.run_id"

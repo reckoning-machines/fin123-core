@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>fin123</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+<div id="app">
+
+  <!-- Menu bar -->
+  <div id="menubar">
+    <div id="menubar-left">
+      <span id="logo">fin123</span>
+      <span class="menu-item" id="btn-save" title="Ctrl+S">Commit</span>
+      <span class="menu-item" id="btn-sync">Sync</span>
+      <span class="menu-item" id="btn-workflow">Workflow</span>
+      <span class="menu-item" id="btn-panel" title="Ctrl+B">Panel</span>
+      <span class="menu-item btn-pipeline-menu" id="btn-pipeline-menu">Pipeline</span>
+      <span class="menu-item" id="btn-clear-cache">Clear Cache</span>
+      <span class="menu-item" id="btn-import-xlsx" title="Ctrl+O">Import</span>
+    </div>
+    <div id="menubar-right">
+      <span class="status-chip" id="health-chip">
+        <span class="dot dot-clean" id="health-dot"></span>
+      </span>
+      <select id="version-select" class="version-select"></select>
+      <span class="status-chip" id="dirty-chip">
+        <span class="dot dot-clean" id="dirty-dot"></span>
+        <span id="dirty-label">Saved</span>
+      </span>
+      <span class="status-chip" id="snap-chip">
+        <span id="snap-ver">&mdash;</span>
+      </span>
+      <button id="btn-run-main" title="Ctrl+Enter">Build</button>
+    </div>
+  </div>
+
+  <!-- Status ribbon -->
+  <div id="status-ribbon">
+    <span class="sr-pill sr-dirty" id="sr-dirty">COMMITTED</span>
+    <span class="sr-pill sr-ds" id="sr-datasheets">DATASHEETS: --</span>
+    <span class="sr-pill sr-build" id="sr-build">LAST BUILD: --</span>
+    <span class="sr-pill sr-verify" id="sr-verify">VERIFY: --</span>
+    <button class="sr-pill sr-open-table" id="sr-open-table" style="display:none;">Open Table</button>
+  </div>
+
+  <!-- Prod mode banner -->
+  <div id="prod-banner" class="prod-banner">
+    <span class="prod-label">PROD</span>
+    <span>Production mode active</span>
+  </div>
+
+  <!-- Read-only banner -->
+  <div id="readonly-banner" class="readonly-banner" style="display:none;">
+    Read-only: viewing version <span id="readonly-ver"></span>
+    <button id="btn-back-latest" class="btn">Back to latest</button>
+  </div>
+
+  <!-- Formula bar -->
+  <div id="formulabar">
+    <input id="cell-addr" readonly value="A1" title="Active cell">
+    <span id="color-dot" title="Cell color"></span>
+    <span id="fx-label">fx</span>
+    <input id="formula-bar" placeholder="Select a cell..." spellcheck="false">
+  </div>
+
+  <!-- Main: grid + side panel -->
+  <div id="main">
+    <div style="display:flex;flex-direction:column;flex:1;overflow:hidden;">
+      <div id="grid-container">
+        <canvas id="grid-canvas"></canvas>
+        <input id="cell-editor" spellcheck="false">
+        <!-- Grid context menu -->
+        <div id="grid-context-menu">
+          <div class="ctx-item" data-action="insert-row">Insert row above</div>
+          <div class="ctx-item" data-action="insert-col">Insert column left</div>
+          <div class="ctx-sep"></div>
+          <div class="ctx-item" data-action="delete-row">Delete row</div>
+          <div class="ctx-item" data-action="delete-col">Delete column</div>
+        </div>
+      </div>
+      <!-- Sheet tabs -->
+      <div id="sheet-tabs">
+        <div id="sheet-tab-list"></div>
+        <button id="btn-add-sheet" title="Add sheet">+</button>
+      </div>
+    </div>
+
+    <div id="side-panel">
+      <div class="panel-rail-label" id="panel-rail">Panel</div>
+      <!-- Datasheets -->
+      <div class="panel-section" id="datasheets-section">
+        <h3>Datasheets</h3>
+        <div class="data-list" id="datasheet-list"></div>
+      </div>
+
+      <!-- Actions -->
+      <div class="panel-section">
+        <h3>Actions</h3>
+        <div class="panel-actions">
+          <button class="btn" id="btn-side-save" title="Ctrl+S">Commit</button>
+          <button class="btn" id="btn-side-run" title="Ctrl+Enter">Build</button>
+          <button class="btn" id="btn-side-sync">Sync</button>
+          <button class="btn" id="btn-side-workflow">Workflow</button>
+          <button class="btn" id="btn-fill">Fill</button>
+          <button class="btn btn-pipeline" id="btn-pipeline">Pipeline</button>
+          <button class="btn" id="btn-import-xlsx-side" title="Ctrl+O">Import XLSX</button>
+        </div>
+      </div>
+
+      <!-- Tabs -->
+      <div class="panel-section" style="flex:1;overflow:hidden;display:flex;flex-direction:column;">
+        <div class="tab-bar">
+          <div class="tab active" data-tab="scalars">Scalars</div>
+          <div class="tab" data-tab="tables">Tables</div>
+          <div class="tab" data-tab="names">Names</div>
+          <div class="tab" data-tab="runs">Builds</div>
+          <div class="tab" data-tab="snaps">Snaps</div>
+          <div class="tab" data-tab="errors">Errors</div>
+          <div class="tab" data-tab="import">Import</div>
+          <div class="tab" data-tab="health">Health</div>
+          <div class="tab" data-tab="logs">Logs</div>
+          <div class="tab" data-tab="checks">Incidents</div>
+          <div class="tab" data-tab="registry">Reg</div>
+        </div>
+        <div id="tab-scalars" class="tab-content active" style="overflow-y:auto;flex:1;">
+          <div class="data-list" id="scalar-list"></div>
+        </div>
+        <div id="tab-tables" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div id="table-list"></div>
+          <div class="table-preview" id="table-preview"></div>
+        </div>
+        <div id="tab-names" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div class="data-list" id="names-list"></div>
+          <div class="names-actions" style="padding:6px 0;">
+            <button class="btn" id="btn-add-name">+ Add name</button>
+          </div>
+        </div>
+        <div id="tab-runs" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div class="data-list" id="run-list"></div>
+          <div style="padding:6px 0;">
+            <button class="btn" id="btn-verify-run">Verify Latest Build</button>
+          </div>
+        </div>
+        <div id="tab-snaps" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div class="data-list" id="snap-list"></div>
+        </div>
+        <div id="tab-errors" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div class="data-list" id="error-list"></div>
+        </div>
+        <div id="tab-import" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div id="import-summary"></div>
+        </div>
+        <div id="tab-health" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div class="data-list" id="health-list"></div>
+        </div>
+        <div id="tab-logs" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div class="log-controls">
+            <select id="log-scope">
+              <option value="global">Global</option>
+              <option value="build">Build</option>
+              <option value="sync">Sync</option>
+              <option value="import">Import</option>
+            </select>
+            <input id="log-scope-id" placeholder="scope id..." style="width:80px;background:var(--bg-input);color:var(--fg-dim);border:1px solid var(--border);border-radius:3px;padding:2px 4px;font-family:var(--font);font-size:10px;outline:none;" disabled>
+            <button class="btn" id="btn-log-refresh">Refresh</button>
+          </div>
+          <div class="data-list" id="log-list"></div>
+        </div>
+        <div id="tab-checks" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div id="checks-content">
+            <div class="check-section" id="checks-assertions"></div>
+            <div class="check-section" id="checks-verify"></div>
+            <div class="check-section" id="checks-violations"></div>
+            <div class="check-section" id="checks-timings"></div>
+          </div>
+          <div style="padding:6px 0;">
+            <button class="btn" id="btn-run-verify">Run Verify</button>
+          </div>
+        </div>
+        <div id="tab-registry" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div id="registry-status"></div>
+          <div class="panel-actions" style="margin-top:6px;">
+            <button class="btn" id="btn-registry-push">Push Latest</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom status bar -->
+  <div id="bottombar">
+    <span id="log-msg">Ready</span>
+    <span id="pos-info"></span>
+  </div>
+
+  <!-- Clear cache overlay -->
+  <div id="cc-overlay">
+    <div id="cc-modal">
+      <h2>Clear Cache</h2>
+      <div id="cc-summary"></div>
+      <div id="cc-actions">
+        <button class="btn" id="cc-cancel">Cancel</button>
+        <button class="btn" id="cc-confirm">Confirm</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Keyboard help overlay -->
+  <div id="kb-overlay">
+    <div id="kb-modal">
+      <h2>Keyboard Shortcuts</h2>
+      <table>
+        <tr><td>Arrow keys</td><td>Move selection</td></tr>
+        <tr><td><kbd>Shift</kbd>+arrows</td><td>Extend selection</td></tr>
+        <tr><td><kbd>Enter</kbd></td><td>Edit active cell</td></tr>
+        <tr><td><kbd>Esc</kbd></td><td>Cancel edit</td></tr>
+        <tr><td><kbd>Tab</kbd> / <kbd>Shift</kbd>+<kbd>Tab</kbd></td><td>Move right / left</td></tr>
+        <tr><td><kbd>Delete</kbd> / <kbd>Backspace</kbd></td><td>Clear cell</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>S</kbd></td><td>Commit snapshot</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Enter</kbd></td><td>Build workbook</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Toggle side panel</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>C</kbd></td><td>Copy selection (TSV)</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Paste from clipboard</td></tr>
+        <tr><td><kbd>E</kbd></td><td>Toggle errors panel</td></tr>
+        <tr><td><kbd>Page Up</kbd> / <kbd>Page Down</kbd></td><td>Scroll by page</td></tr>
+        <tr><td><kbd>Home</kbd> / <kbd>End</kbd></td><td>First / last column</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Home</kbd></td><td>Jump to A1</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>PageUp</kbd>/<kbd>PageDown</kbd></td><td>Switch sheet</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>1</kbd></td><td>Color blue</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>2</kbd></td><td>Color red</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd></td><td>Clear color</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>=</kbd></td><td>Insert row above</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>-</kbd></td><td>Delete current row</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd></td><td>Toggle precedent highlight</td></tr>
+        <tr><td><kbd>Ctrl</kbd>+<kbd>O</kbd></td><td>Import XLSX</td></tr>
+        <tr><td>Type any character</td><td>Start editing</td></tr>
+      </table>
+      <div id="kb-dismiss">Press <kbd>?</kbd> or <kbd>Esc</kbd> to close</div>
+    </div>
+  </div>
+
+  <!-- Import XLSX overlay -->
+  <div id="import-overlay">
+    <div id="import-modal">
+      <h2>Import XLSX</h2>
+      <div id="import-form">
+        <div class="import-field">
+          <label>File</label>
+          <div class="import-file-row">
+            <span id="import-file-name">No file selected</span>
+            <button class="btn" id="import-browse-btn">Browse...</button>
+          </div>
+          <input type="file" id="import-file-input" accept=".xlsx" style="display:none;">
+        </div>
+        <div class="import-field">
+          <label>Project name</label>
+          <input type="text" id="import-project-name" placeholder="my_model" spellcheck="false">
+        </div>
+        <div class="import-field">
+          <label>Destination</label>
+          <span id="import-dest-preview" class="import-dest">~/Documents/fin123_projects/...</span>
+        </div>
+      </div>
+      <div id="import-actions">
+        <button class="btn" id="import-cancel">Cancel</button>
+        <button class="btn" id="import-submit" disabled>Import</button>
+      </div>
+    </div>
+  </div>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

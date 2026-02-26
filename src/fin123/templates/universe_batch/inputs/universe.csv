@@ -1,0 +1,6 @@
+ticker,sector,weight
+AAPL,technology,0.25
+MSFT,technology,0.20
+GOOGL,technology,0.20
+AMZN,consumer,0.20
+META,technology,0.15

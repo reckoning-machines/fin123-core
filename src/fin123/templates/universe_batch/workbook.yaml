@@ -1,0 +1,38 @@
+# fin123 workbook — universe batch model
+# Each batch row provides a ticker; the model is built once per ticker.
+version: 1
+
+params:
+  ticker: AAPL
+  weight: 0.20
+  universe: "{{universe_name}}"
+
+tables:
+  universe:
+    source: inputs/universe.csv
+    format: csv
+
+plans:
+  - name: ticker_row
+    source: universe
+    steps:
+      - func: filter
+        column: ticker
+        op: "=="
+        value: "$ticker"
+
+outputs:
+  - name: ticker_label
+    type: scalar
+    value: "$ticker"
+
+  - name: weight_pct
+    type: scalar
+    formula: "=weight * 100"
+
+  - name: universe_label
+    type: scalar
+    value: "$universe"
+
+  - name: ticker_row
+    type: table

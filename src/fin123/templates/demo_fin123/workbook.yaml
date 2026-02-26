@@ -1,0 +1,83 @@
+# fin123 workbook — demo lifecycle model
+# Demonstrates: tables, join_left, lookup_scalar, formulas, sheets with
+# PARAM() proxies, assertions, scenarios, and diff-friendly param sweeps.
+version: 1
+
+params:
+  ticker: "{{ticker}}"
+  multiple: 15
+  discount_rate: 0.10
+
+tables:
+  prices:
+    source: inputs/prices.parquet
+    format: parquet
+
+  estimates:
+    source: inputs/estimates.parquet
+    format: parquet
+
+plans:
+  - name: priced_estimates
+    source: prices
+    steps:
+      - func: join_left
+        right: estimates
+        on: ticker
+        validate: many_to_one
+      - func: sort
+        by: [ticker, date]
+
+outputs:
+  # lookup_scalar: pull eps_ntm for the selected ticker
+  - name: eps
+    type: scalar
+    func: lookup_scalar
+    args:
+      table_name: estimates
+      key_col: ticker
+      value_col: eps_ntm
+      key_value: "$ticker"
+
+  # formula: simple valuation = eps * multiple
+  - name: implied_value
+    type: scalar
+    formula: "=eps * multiple"
+
+  # formula: discounted value
+  - name: discounted_value
+    type: scalar
+    formula: "=implied_value * (1 - discount_rate)"
+
+  # table output
+  - name: priced_estimates
+    type: table
+
+sheets:
+  - name: Valuation
+    n_rows: 10
+    n_cols: 5
+    cells:
+      A1: {value: "Ticker"}
+      B1: {formula: '=PARAM("ticker")'}
+      A2: {value: "Multiple"}
+      B2: {formula: '=PARAM("multiple")'}
+      A3: {value: "EPS (NTM)"}
+      B3: {formula: "=eps"}
+      A4: {value: "Implied Value"}
+      B4: {formula: "=eps * multiple"}
+      A5: {value: "Discounted Value"}
+      B5: {formula: "=implied_value * (1 - discount_rate)"}
+
+assertions:
+  - name: eps_positive
+    expr: "$eps > 0"
+    severity: error
+
+  - name: discount_rate_sane
+    expr: "$discount_rate < 0.50"
+    severity: error
+
+  - name: valuation_positive
+    expr: "$implied_value > 0"
+    severity: warn

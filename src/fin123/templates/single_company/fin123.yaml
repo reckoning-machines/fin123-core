@@ -1,0 +1,8 @@
+# fin123 project configuration — single company model
+max_runs: 50
+max_artifact_versions: 20
+max_total_run_bytes: 2000000000
+max_total_artifact_bytes: 5000000000
+max_sync_runs: 50
+max_total_sync_bytes: 1000000000
+mode: dev

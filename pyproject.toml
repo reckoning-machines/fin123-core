@@ -1,0 +1,42 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "fin123-core"
+version = "0.2.1"
+description = "Polars-backed financial workbook engine with local browser UI"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+authors = [{ name = "fin123 contributors" }]
+dependencies = [
+    "polars>=1.0",
+    "pyyaml>=6.0",
+    "click>=8.0",
+    "lark>=1.1",
+    "fastapi>=0.100",
+    "uvicorn>=0.20",
+    "python-multipart>=0.0.6",
+]
+
+[project.optional-dependencies]
+xlsx = ["openpyxl>=3.1"]
+dev = [
+    "pytest>=7.0",
+    "pytest-tmp-files>=0.0.2",
+    "httpx>=0.24",
+    "openpyxl>=3.1",
+]
+
+[project.scripts]
+fin123-core = "fin123.cli_core:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/fin123"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src/fin123/**"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

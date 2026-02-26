@@ -1,0 +1,16 @@
+name: single_company
+description: "Single-company financial model with scenarios, assertions, and verify"
+engine_compat: ">=0.1.0"
+invariants:
+  - deterministic_build
+  - assertion_gating
+  - verify_pass
+params:
+  company_name:
+    type: string
+    default: ACME
+    description: "Company ticker or label used in the model"
+  currency:
+    type: string
+    default: USD
+    description: "Reporting currency"

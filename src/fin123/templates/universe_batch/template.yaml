@@ -1,0 +1,11 @@
+name: universe_batch
+description: "Parameterized model with batch builds across a universe of tickers"
+engine_compat: ">=0.1.0"
+invariants:
+  - deterministic_build
+  - batch_semantics
+params:
+  universe_name:
+    type: string
+    default: sp5_demo
+    description: "Label for the ticker universe"

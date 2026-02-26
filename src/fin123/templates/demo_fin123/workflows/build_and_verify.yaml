@@ -1,0 +1,12 @@
+# Build then verify in one step.
+# Usage: fin123 workflow run build_and_verify <project_dir>
+name: build_and_verify
+description: Build the workbook and verify the run passes all assertions.
+steps:
+  - name: build
+    type: build
+    params: {}
+
+  - name: verify
+    type: verify
+    input: "$steps.build.run_id"

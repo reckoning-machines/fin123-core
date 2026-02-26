@@ -1,0 +1,64 @@
+# fin123 workbook — single company model
+version: 1
+
+params:
+  ticker: "{{company_name}}"
+  currency: "{{currency}}"
+  tax_rate: 0.15
+  revenue_growth: 0.05
+
+scenarios:
+  base:
+    overrides:
+      revenue_growth: 0.05
+  bull:
+    overrides:
+      revenue_growth: 0.10
+  bear:
+    overrides:
+      revenue_growth: -0.02
+
+tables:
+  assumptions:
+    source: inputs/assumptions.csv
+    format: csv
+
+plans:
+  - name: summary
+    source: assumptions
+    steps:
+      - func: group_agg
+        group_by: [category]
+        aggs:
+          total_amount: "sum(amount)"
+      - func: sort
+        by: [total_amount]
+        descending: true
+
+outputs:
+  - name: base_revenue
+    type: scalar
+    value: 500000.0
+
+  - name: projected_revenue
+    type: scalar
+    formula: "=base_revenue * (1 + revenue_growth)"
+
+  - name: net_income
+    type: scalar
+    formula: "=projected_revenue * (1 - tax_rate)"
+
+  - name: margin
+    type: scalar
+    formula: "=net_income / projected_revenue"
+
+  - name: summary
+    type: table
+
+assertions:
+  - name: net_income_positive
+    expr: "$net_income > 0"
+    severity: error
+  - name: margin_reasonable
+    expr: "$margin > 0"
+    severity: warn

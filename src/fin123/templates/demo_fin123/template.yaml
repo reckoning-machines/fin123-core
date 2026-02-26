@@ -1,0 +1,12 @@
+name: demo_fin123
+description: "Demo template showcasing the full fin123 lifecycle: build, verify, diff, release"
+engine_compat: ">=0.1.0"
+invariants:
+  - deterministic_build
+  - assertion_gating
+  - verify_pass
+params:
+  ticker:
+    type: string
+    default: AAPL
+    description: "Ticker symbol used in lookups and sheets"
