@@ -7,7 +7,7 @@ name = "fin123-core"
 version = "0.2.1"
 description = "Polars-backed financial workbook engine with local browser UI"
 readme = "README.md"
-license = "MIT"
+license = {text = "Apache-2.0"}
 requires-python = ">=3.11"
 authors = [{ name = "fin123 contributors" }]
 dependencies = [
