@@ -198,8 +198,20 @@ class TestSqlDatasheet:
 class TestSubstitution:
     """Test placeholder substitution logic."""
 
+    def test_set_ticker(self, tmp_path: Path) -> None:
+        """--set ticker=AAPL results in AAPL appearing in workbook.yaml."""
+        project = tmp_path / "sub_ticker"
+        scaffold_from_template(
+            target_dir=project,
+            name="single_company",
+            overrides={"ticker": "AAPL"},
+        )
+
+        spec = yaml.safe_load((project / "workbook.yaml").read_text())
+        assert spec["params"]["ticker"] == "AAPL"
+
     def test_set_company_name(self, tmp_path: Path) -> None:
-        """--set company_name=TSLA results in TSLA appearing in workbook.yaml."""
+        """--set company_name=TSLA is accepted (backward compat)."""
         project = tmp_path / "sub"
         scaffold_from_template(
             target_dir=project,
@@ -208,7 +220,8 @@ class TestSubstitution:
         )
 
         spec = yaml.safe_load((project / "workbook.yaml").read_text())
-        assert spec["params"]["ticker"] == "TSLA"
+        # company_name no longer maps to ticker; ticker keeps its default
+        assert spec["params"]["ticker"] == "ACME"
 
     def test_set_multiple_params(self, tmp_path: Path) -> None:
         """Multiple --set params are all applied."""
@@ -216,7 +229,7 @@ class TestSubstitution:
         scaffold_from_template(
             target_dir=project,
             name="single_company",
-            overrides={"company_name": "GOOG", "currency": "EUR"},
+            overrides={"ticker": "GOOG", "currency": "EUR"},
         )
 
         spec = yaml.safe_load((project / "workbook.yaml").read_text())
@@ -367,7 +380,7 @@ class TestTemplateCLI:
         assert (project / "workbook.yaml").exists()
 
     def test_cli_new_with_set(self, tmp_path: Path) -> None:
-        """fin123 new --template --set key=value applies substitution."""
+        """fin123 new --template --set ticker=value applies substitution."""
         from click.testing import CliRunner
         from fin123.cli import main
 
@@ -376,7 +389,7 @@ class TestTemplateCLI:
         result = runner.invoke(main, [
             "new", str(project),
             "--template", "single_company",
-            "--set", "company_name=NVDA",
+            "--set", "ticker=NVDA",
         ])
         assert result.exit_code == 0, result.output
         spec = yaml.safe_load((project / "workbook.yaml").read_text())

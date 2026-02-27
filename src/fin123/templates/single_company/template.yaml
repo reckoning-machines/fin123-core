@@ -6,10 +6,14 @@ invariants:
   - assertion_gating
   - verify_pass
 params:
+  ticker:
+    type: string
+    default: ACME
+    description: "Stock ticker symbol used in the model"
   company_name:
     type: string
     default: ACME
-    description: "Company ticker or label used in the model"
+    description: "Company name or label used in the model"
   currency:
     type: string
     default: USD

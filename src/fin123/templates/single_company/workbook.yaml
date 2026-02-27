@@ -2,7 +2,7 @@
 version: 1
 
 params:
-  ticker: "{{company_name}}"
+  ticker: "{{ticker}}"
   currency: "{{currency}}"
   tax_rate: 0.15
   revenue_growth: 0.05
