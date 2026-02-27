@@ -47,13 +47,17 @@ fin123-core commit my_model
 
 # Build (evaluate the workbook)
 fin123-core build my_model
+# => Build saved to: 20260227T120000_run_1
 
-# Verify build integrity
-fin123-core verify-build my_model
+# Verify build integrity (requires a completed build)
+fin123-core verify-build 20260227T120000_run_1 --project my_model
 
 # Launch the browser UI
 fin123-core ui my_model
 ```
+
+> **Note:** `verify-build` requires a completed build run.
+> Run `fin123-core build` first, then pass the run ID printed by `build`.
 
 ## Browser UI
 
@@ -77,7 +81,7 @@ Opens a local spreadsheet editor at `http://localhost:<port>` with:
 | `fin123-core new <dir>` | Scaffold a new project (optionally from template) |
 | `fin123-core commit <dir>` | Snapshot current workbook |
 | `fin123-core build <dir>` | Build workbook (evaluate graphs, persist outputs) |
-| `fin123-core verify-build <run_id>` | Verify a build's integrity |
+| `fin123-core verify-build <run_id> --project <dir>` | Verify a build's integrity (requires completed build) |
 | `fin123-core diff run <a> <b>` | Compare two builds |
 | `fin123-core diff version <v1> <v2>` | Compare two workbook versions |
 | `fin123-core batch build <dir>` | Run batch builds from a params CSV |

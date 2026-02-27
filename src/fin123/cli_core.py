@@ -406,6 +406,19 @@ def _do_verify_build(run_id: str, directory: str, as_json: bool) -> None:
     set_project_dir(project_dir)
     report = verify_run(project_dir, run_id)
 
+    if report.get("no_run"):
+        if as_json:
+            click.echo(json.dumps(report, indent=2))
+        else:
+            click.echo(f"Verify build: {run_id}")
+            click.echo("Status: FAIL")
+            click.echo(f"  no completed build run found for project '{run_id}'")
+            click.echo("")
+            click.echo("Next steps:")
+            click.echo(f"  Run:  fin123-core build <project_dir>")
+            click.echo(f"  Or:   open the UI and click Build")
+        raise SystemExit(2)
+
     if as_json:
         click.echo(json.dumps(report, indent=2))
     else:

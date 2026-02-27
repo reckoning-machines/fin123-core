@@ -395,7 +395,59 @@ class TestProdMode:
 
 
 # ---------------------------------------------------------------------------
-# E) CLI: verify-run command
+# E.0) CLI (core): verify-build friendly error on missing run
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyBuildNoRun:
+    """Tests for verify-build when no build run exists."""
+
+    def test_verify_run_returns_no_run_flag(self, project_dir):
+        from fin123.verify import verify_run
+
+        report = verify_run(project_dir, "nonexistent_run")
+        assert report["status"] == "fail"
+        assert report.get("no_run") is True
+
+    def test_no_run_friendly_message(self, project_dir):
+        from click.testing import CliRunner
+
+        # Import whichever CLI is available (Pod or Core)
+        try:
+            from fin123.cli import main
+        except ImportError:
+            from fin123.cli_core import main  # type: ignore[no-redef]
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main, ["verify-build", "nonexistent", "--project", str(project_dir)]
+        )
+        assert result.exit_code == 2
+        assert "no completed build run found" in result.output
+        assert "Next steps:" in result.output
+        assert "fin123-core build" in result.output
+
+    def test_no_run_json_includes_no_run_flag(self, project_dir):
+        from click.testing import CliRunner
+
+        try:
+            from fin123.cli import main
+        except ImportError:
+            from fin123.cli_core import main  # type: ignore[no-redef]
+
+        runner = CliRunner()
+        result = runner.invoke(
+            main,
+            ["verify-build", "nonexistent", "--project", str(project_dir), "--json"],
+        )
+        assert result.exit_code == 2
+        output = json.loads(result.output)
+        assert output["status"] == "fail"
+        assert output["no_run"] is True
+
+
+# ---------------------------------------------------------------------------
+# E.1) CLI (pod): verify-run command
 # ---------------------------------------------------------------------------
 
 

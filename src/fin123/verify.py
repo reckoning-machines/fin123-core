@@ -44,6 +44,7 @@ def verify_run(project_dir: Path, run_id: str) -> dict[str, Any]:
     if not meta_path.exists():
         return {
             "status": "fail",
+            "no_run": True,
             "failures": [f"run_meta.json not found for run {run_id}"],
             "hashes": {},
         }
