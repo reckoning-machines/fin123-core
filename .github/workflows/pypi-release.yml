@@ -1,0 +1,90 @@
+# ──────────────────────────────────────────────────────────────────────
+# PyPI Publish — fin123-core
+# ──────────────────────────────────────────────────────────────────────
+# Builds sdist + wheel and publishes to PyPI on core-v* tags using
+# Trusted Publishing (OIDC).
+#
+# ONE-TIME PYPI SETUP (must be done once by a PyPI project owner):
+#
+#   1. Log in to https://pypi.org and navigate to the "fin123-core"
+#      project (create it first with a manual upload if it doesn't exist).
+#   2. Go to Settings → Publishing → Add a new publisher.
+#   3. Fill in:
+#        Owner:      reckoning-machines   (GitHub org / user)
+#        Repository: fin123-core
+#        Workflow:   pypi-release.yml
+#        Environment: pypi
+#   4. Save. No API token or secret is needed after this — GitHub
+#      Actions will exchange an OIDC token with PyPI automatically.
+#
+#   If Trusted Publishing is not yet configured the publish job will
+#   fail with an OIDC error. That is expected — complete step 1-4
+#   above and re-run the workflow.
+# ──────────────────────────────────────────────────────────────────────
+
+name: PyPI Release
+
+on:
+  push:
+    tags:
+      - "core-v*"
+
+jobs:
+  # ── Build sdist + wheel ───────────────────────────────────────────
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build tooling
+        run: python -m pip install --upgrade pip build twine
+
+      - name: Verify tag version matches pyproject.toml
+        run: |
+          TAG_VERSION="${GITHUB_REF_NAME#core-v}"
+          PKG_VERSION=$(python -c "
+          import tomllib, pathlib
+          data = tomllib.loads(pathlib.Path('pyproject.toml').read_text())
+          print(data['project']['version'])
+          ")
+          echo "Tag version:     $TAG_VERSION"
+          echo "Package version: $PKG_VERSION"
+          if [ "$TAG_VERSION" != "$PKG_VERSION" ]; then
+            echo "::error::Version mismatch — tag says $TAG_VERSION but pyproject.toml says $PKG_VERSION"
+            exit 1
+          fi
+
+      - name: Build sdist and wheel
+        run: python -m build
+
+      - name: Check distributions
+        run: twine check dist/*
+
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+          if-no-files-found: error
+
+  # ── Publish to PyPI via Trusted Publishing (OIDC) ────────────────
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1

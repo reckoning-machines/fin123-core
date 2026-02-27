@@ -18,9 +18,27 @@ It runs entirely on your machine — no database, no server, no account required
 
 ## Quick Start
 
+### Install from PyPI (recommended for developers)
+
 ```bash
 pip install fin123-core
+```
 
+Or install from source (editable / development mode):
+
+```bash
+git clone https://github.com/reckoning-machines/fin123-core.git
+cd fin123-core
+pip install -e ".[dev]"
+```
+
+> **End-user binaries** (no Python required) are available on
+> [GitHub Releases](https://github.com/reckoning-machines/fin123-core/releases).
+> PyPI is intended for developer / library installs.
+
+### Usage
+
+```bash
 # Create a project from a template
 fin123-core new my_model --template single_company --set ticker=AAPL
 
