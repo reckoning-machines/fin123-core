@@ -14,6 +14,7 @@ import polars as pl
 from lark import Tree, Token
 
 from fin123.formulas.errors import (
+    ENGINE_ERRORS,
     FormulaError,
     FormulaFunctionError,
     FormulaRefError,
@@ -329,7 +330,7 @@ def _fn_iferror(raw_args: list, ctx: dict, tc: dict, resolver, cs=None) -> Any:
         raise FormulaFunctionError("IFERROR", "IFERROR requires exactly 2 arguments")
     try:
         return _eval(raw_args[0], ctx, tc, resolver, cs)
-    except (FormulaError, ZeroDivisionError, ValueError, KeyError):
+    except ENGINE_ERRORS:
         return _eval(raw_args[1], ctx, tc, resolver, cs)
 
 
@@ -465,3 +466,27 @@ _FUNC_TABLE: dict[str, Any] = {
     "COUNTIFS": _fn_countifs,
     "PARAM": _fn_param,
 }
+
+
+# ---------- Merge extension formula modules ----------
+
+def _load_extensions() -> None:
+    """Load and merge formula extension modules.
+
+    Deferred to avoid circular imports (fn_error imports _eval).
+    """
+    from fin123.formulas.fn_logical import LOGICAL_FUNCTIONS
+    from fin123.formulas.fn_error import ERROR_FUNCTIONS, ERROR_LAZY_FUNCTIONS
+    from fin123.formulas.fn_date import DATE_FUNCTIONS
+    from fin123.formulas.fn_lookup import LOOKUP_FUNCTIONS
+    from fin123.formulas.fn_finance import FINANCE_FUNCTIONS
+
+    _FUNC_TABLE.update(LOGICAL_FUNCTIONS)
+    _FUNC_TABLE.update(ERROR_FUNCTIONS)
+    _FUNC_TABLE.update(DATE_FUNCTIONS)
+    _FUNC_TABLE.update(LOOKUP_FUNCTIONS)
+    _FUNC_TABLE.update(FINANCE_FUNCTIONS)
+    _LAZY_FUNCTIONS.update(ERROR_LAZY_FUNCTIONS)
+
+
+_load_extensions()

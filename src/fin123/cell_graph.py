@@ -69,6 +69,39 @@ class CellCycleError(FormulaError):
         super().__init__(f"Circular cell reference: {' -> '.join(parts)}")
 
 
+# ---------------------------------------------------------------------------
+# Error display classifier
+# ---------------------------------------------------------------------------
+
+# Deterministic mapping from stored error text to display code.
+# Checked in order; first match wins.  The fallback is #ERR!.
+_ERROR_DISPLAY_RULES: list[tuple[str, str]] = [
+    ("Unknown function", "#NAME?"),
+    ("Unknown reference", "#REF!"),
+    ("Division by zero", "#DIV/0!"),
+    ("did not converge", "#NUM!"),
+]
+
+
+def classify_error_message(msg: str) -> str:
+    """Map a stored error message string to a canonical display code.
+
+    Priority:
+        1. Pattern match against ``_ERROR_DISPLAY_RULES`` (first hit wins).
+        2. Fallback: ``#ERR!``.
+
+    .. note::
+        Today the error store holds only ``str(exc)``.  If typed exception
+        propagation is added later, introduce a ``classify_error(exc)``
+        companion that dispatches by exception type before falling back
+        to this string-based classifier.
+    """
+    for pattern, code in _ERROR_DISPLAY_RULES:
+        if pattern in msg:
+            return code
+    return "#ERR!"
+
+
 class CellGraph:
     """On-demand memoized evaluator for sheet cell formulas.
 
@@ -226,6 +259,14 @@ class CellGraph:
         """Get a display-friendly string for a cell value.
 
         Evaluates the cell if not yet cached, and formats the result.
+
+        Error display codes:
+            #CIRC!  — circular reference
+            #NAME?  — unknown function
+            #REF!   — unresolved reference
+            #DIV/0! — division by zero
+            #NUM!   — numeric error (e.g. IRR did not converge)
+            #ERR!   — any other evaluation error
         """
         try:
             val = self.evaluate_cell(sheet, addr)
@@ -234,10 +275,20 @@ class CellGraph:
         except Exception:
             return "#ERR!"
 
+        # evaluate_cell swallows errors and returns None; check stored errors.
+        if val is None:
+            key = (sheet, addr)
+            err_msg = self._errors.get(key)
+            if err_msg is not None:
+                return classify_error_message(err_msg)
+
         if val is None:
             return ""
         if isinstance(val, bool):
             return "TRUE" if val else "FALSE"
+        import datetime
+        if isinstance(val, datetime.date):
+            return val.isoformat()
         if isinstance(val, float):
             # Format floats cleanly
             if val == int(val):

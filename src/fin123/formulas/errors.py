@@ -51,3 +51,15 @@ class FormulaFunctionError(FormulaError):
         self.func_name = func_name
         msg = message or f"Unknown function: {func_name!r}"
         super().__init__(msg)
+
+
+# Canonical tuple of exception types that ISERROR / IFERROR treat as
+# "engine error values".  Every lazy error-handling function must use
+# this tuple so behaviour stays consistent across the engine.
+ENGINE_ERRORS: tuple[type[BaseException], ...] = (
+    FormulaError,
+    ZeroDivisionError,
+    ValueError,
+    KeyError,
+    TypeError,
+)

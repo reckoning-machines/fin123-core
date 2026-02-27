@@ -111,11 +111,22 @@ my_model/
   cache/              # Ephemeral hash cache
 ```
 
+## Build Artifacts
+
+```bash
+python -m build
+```
+
+Produces `dist/fin123_core-<version>.tar.gz` (sdist) and
+`dist/fin123_core-<version>-py3-none-any.whl` (wheel).
+
 ## Documentation
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Core architecture: two-graph model, formula engine, UI, storage, determinism.
 - [POD_BOUNDARY.md](POD_BOUNDARY.md) — What the enterprise Pod layer adds and how it extends Core.
+- [docs/formulas_and_views.md](docs/formulas_and_views.md) — Formula semantics, Excel compatibility, unsupported functions, view sort/filter.
 - [docs/RUNBOOK.md](docs/RUNBOOK.md) — Operational runbook: install, usage, troubleshooting, and release process.
+- [CHANGELOG.md](CHANGELOG.md) — Release notes.
 
 ## Enterprise Features
 

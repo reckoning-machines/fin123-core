@@ -1329,23 +1329,261 @@ async function loadTableList() {
   }
 }
 
+// ── View sort/filter state ──
+const _viewState = {
+  tableName: null,
+  sorts: [],       // [{column, descending}]
+  filters: [],     // [{type, column, ...}]
+  columns: [],
+  rows: [],
+  totalRows: 0,
+};
+
 async function loadTablePreview(name) {
+  _viewState.tableName = name;
+  _viewState.sorts = [];
+  _viewState.filters = [];
+  await _fetchTableView();
+}
+
+async function _fetchTableView() {
+  const name = _viewState.tableName;
+  if (!name) return;
   try {
-    const data = await api("GET", "/outputs/table?name=" + encodeURIComponent(name) + "&limit=50");
-    const el = document.getElementById("table-preview");
-    if (!data.columns || !data.rows) { el.innerHTML = "<p>No data</p>"; return; }
-    let html = "<table><thead><tr>";
-    for (const col of data.columns) html += "<th>" + esc(col) + "</th>";
-    html += "</tr></thead><tbody>";
-    for (const row of data.rows.slice(0, 50)) {
-      html += "<tr>";
-      for (const col of data.columns) html += "<td>" + esc(String(row[col] ?? "")) + "</td>";
-      html += "</tr>";
+    const hasTransforms = _viewState.sorts.length > 0 || _viewState.filters.length > 0;
+    let data;
+    if (hasTransforms) {
+      data = await api("POST", "/outputs/table/view", {
+        name, limit: 5000,
+        sorts: _viewState.sorts,
+        filters: _viewState.filters,
+      });
+    } else {
+      data = await api("GET", "/outputs/table?name=" + encodeURIComponent(name) + "&limit=5000");
     }
-    html += "</tbody></table>";
-    if (data.limited) html += `<p style="color:var(--fg-dim);font-size:10px;">${data.total_rows} total rows (showing 50)</p>`;
-    el.innerHTML = html;
+    if (!data.columns || !data.rows) {
+      document.getElementById("table-preview").innerHTML = "<p>No data</p>";
+      return;
+    }
+    _viewState.columns = data.columns;
+    _viewState.rows = data.rows;
+    _viewState.totalRows = data.total_rows;
+    _renderTableView();
   } catch (err) { log("Table preview error: " + err.message, "error"); }
+}
+
+function _renderTableView() {
+  const el = document.getElementById("table-preview");
+  const { columns, rows, totalRows, sorts, filters } = _viewState;
+
+  // Build sort/filter lookup
+  const sortMap = {};
+  sorts.forEach((s, i) => { sortMap[s.column] = { desc: s.descending, idx: i }; });
+  const filterCols = new Set(filters.map(f => f.column));
+
+  // Toolbar chips
+  let toolbar = "";
+  if (sorts.length > 0 || filters.length > 0) {
+    toolbar = '<div class="view-toolbar">';
+    for (const s of sorts) {
+      toolbar += `<span class="view-chip view-chip-sort" data-col="${esc(s.column)}">${esc(s.column)} ${s.descending ? "\u2193" : "\u2191"} <span class="view-chip-x" data-action="clear-sort" data-col="${esc(s.column)}">\u00d7</span></span>`;
+    }
+    for (const f of filters) {
+      let label = f.column + ": ";
+      if (f.type === "numeric") label += f.op + " " + f.value;
+      else if (f.type === "between") label += f.low + "\u2013" + f.high;
+      else if (f.type === "text") label += f.op + " " + f.value;
+      else if (f.type === "value_list") label += f.values.length + " values";
+      else if (f.type === "blanks") label += f.show_blanks ? "blanks" : "non-blanks";
+      toolbar += `<span class="view-chip view-chip-filter" data-col="${esc(f.column)}">${esc(label)} <span class="view-chip-x" data-action="clear-filter" data-col="${esc(f.column)}">\u00d7</span></span>`;
+    }
+    toolbar += '<span class="view-chip view-chip-clear" data-action="clear-all">Clear All</span>';
+    toolbar += "</div>";
+  }
+
+  // Table
+  let html = toolbar + "<table><thead><tr>";
+  for (const col of columns) {
+    const srt = sortMap[col];
+    const hasFilter = filterCols.has(col);
+    let cls = "tv-th";
+    if (srt) cls += " tv-th-sorted";
+    if (hasFilter) cls += " tv-th-filtered";
+    const arrow = srt ? (srt.desc ? " \u25bc" : " \u25b2") : "";
+    const badge = hasFilter ? '<span class="tv-filter-badge">F</span>' : "";
+    html += `<th class="${cls}" data-col="${esc(col)}">${esc(col)}${arrow}${badge}</th>`;
+  }
+  html += "</tr></thead><tbody>";
+  const displayRows = rows.slice(0, 200);
+  for (const row of displayRows) {
+    html += "<tr>";
+    for (const col of columns) html += "<td>" + esc(String(row[col] ?? "")) + "</td>";
+    html += "</tr>";
+  }
+  html += "</tbody></table>";
+  const showing = Math.min(displayRows.length, rows.length);
+  html += `<p style="color:var(--fg-dim);font-size:10px;">${totalRows} total rows (showing ${showing})</p>`;
+  el.innerHTML = html;
+
+  // Attach header click/right-click handlers
+  el.querySelectorAll("th.tv-th").forEach(th => {
+    th.addEventListener("click", () => _onSortClick(th.dataset.col));
+    th.addEventListener("contextmenu", (e) => { e.preventDefault(); _openFilterPanel(th.dataset.col, e); });
+  });
+
+  // Toolbar chip handlers
+  el.querySelectorAll(".view-chip-x").forEach(x => {
+    x.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const action = x.dataset.action;
+      const col = x.dataset.col;
+      if (action === "clear-sort") { _viewState.sorts = _viewState.sorts.filter(s => s.column !== col); _fetchTableView(); }
+      if (action === "clear-filter") { _viewState.filters = _viewState.filters.filter(f => f.column !== col); _fetchTableView(); }
+    });
+  });
+  const clearAll = el.querySelector('[data-action="clear-all"]');
+  if (clearAll) clearAll.addEventListener("click", () => { _viewState.sorts = []; _viewState.filters = []; _fetchTableView(); });
+}
+
+function _onSortClick(col) {
+  const existing = _viewState.sorts.findIndex(s => s.column === col);
+  if (existing === -1) {
+    // Add ascending sort
+    _viewState.sorts.push({ column: col, descending: false });
+  } else if (!_viewState.sorts[existing].descending) {
+    // Switch to descending
+    _viewState.sorts[existing].descending = true;
+  } else {
+    // Remove sort
+    _viewState.sorts.splice(existing, 1);
+  }
+  _fetchTableView();
+}
+
+function _openFilterPanel(col, event) {
+  // Close any existing panel
+  _closeFilterPanel();
+
+  const panel = document.createElement("div");
+  panel.className = "view-filter-panel";
+  panel.id = "view-filter-panel";
+
+  // Detect column type from data
+  const vals = _viewState.rows.map(r => r[col]);
+  const nonNull = vals.filter(v => v !== null && v !== undefined && v !== "");
+  const isNumeric = nonNull.length > 0 && nonNull.every(v => typeof v === "number" || (typeof v === "string" && !isNaN(Number(v))));
+  const uniqueVals = [...new Set(vals.map(v => v === null || v === undefined ? null : v))];
+  const hasValues = uniqueVals.length <= 50;
+
+  let html = `<div class="vfp-header">${esc(col)}</div>`;
+
+  if (isNumeric) {
+    html += `<div class="vfp-section">
+      <label class="vfp-label">Numeric filter</label>
+      <div class="vfp-row">
+        <select id="vfp-num-op" class="vfp-select">
+          <option value=">">&gt;</option>
+          <option value=">=">&ge;</option>
+          <option value="<">&lt;</option>
+          <option value="<=">&le;</option>
+          <option value="=">=</option>
+          <option value="<>">&ne;</option>
+        </select>
+        <input id="vfp-num-val" type="number" class="vfp-input" placeholder="value" />
+        <button class="btn vfp-apply" data-filter="numeric">Apply</button>
+      </div>
+    </div>`;
+  }
+
+  if (!isNumeric) {
+    html += `<div class="vfp-section">
+      <label class="vfp-label">Text filter</label>
+      <div class="vfp-row">
+        <select id="vfp-text-op" class="vfp-select">
+          <option value="contains">Contains</option>
+          <option value="starts_with">Starts with</option>
+          <option value="ends_with">Ends with</option>
+          <option value="equals">Equals</option>
+        </select>
+        <input id="vfp-text-val" type="text" class="vfp-input" placeholder="text" />
+        <button class="btn vfp-apply" data-filter="text">Apply</button>
+      </div>
+    </div>`;
+  }
+
+  if (hasValues) {
+    html += `<div class="vfp-section">
+      <label class="vfp-label">Values (${uniqueVals.length})</label>
+      <div class="vfp-values" id="vfp-values">`;
+    for (const v of uniqueVals.sort()) {
+      const display = v === null ? "(blank)" : String(v);
+      html += `<label class="vfp-val-label"><input type="checkbox" value="${esc(String(v ?? "__null__"))}" checked /> ${esc(display)}</label>`;
+    }
+    html += `</div>
+      <button class="btn vfp-apply" data-filter="value_list">Apply selected</button>
+    </div>`;
+  }
+
+  html += `<div class="vfp-section">
+    <label class="vfp-label">Blanks</label>
+    <div class="vfp-row">
+      <button class="btn vfp-apply" data-filter="blanks-only">Only blanks</button>
+      <button class="btn vfp-apply" data-filter="non-blanks">Non-blanks</button>
+    </div>
+  </div>`;
+
+  panel.innerHTML = html;
+
+  // Position near the click
+  panel.style.left = Math.min(event.clientX, window.innerWidth - 260) + "px";
+  panel.style.top = Math.min(event.clientY, window.innerHeight - 300) + "px";
+  document.body.appendChild(panel);
+
+  // Attach apply handlers
+  panel.querySelectorAll(".vfp-apply").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const filterType = btn.dataset.filter;
+      // Remove existing filter on this column
+      _viewState.filters = _viewState.filters.filter(f => f.column !== col);
+
+      if (filterType === "numeric") {
+        const op = panel.querySelector("#vfp-num-op").value;
+        const val = parseFloat(panel.querySelector("#vfp-num-val").value);
+        if (!isNaN(val)) _viewState.filters.push({ type: "numeric", column: col, op, value: val });
+      } else if (filterType === "text") {
+        const op = panel.querySelector("#vfp-text-op").value;
+        const val = panel.querySelector("#vfp-text-val").value;
+        if (val) _viewState.filters.push({ type: "text", column: col, op, value: val, case_sensitive: false });
+      } else if (filterType === "value_list") {
+        const checks = panel.querySelectorAll("#vfp-values input:checked");
+        const selected = [...checks].map(c => c.value === "__null__" ? null : (isNumeric ? Number(c.value) : c.value));
+        if (selected.length < uniqueVals.length) _viewState.filters.push({ type: "value_list", column: col, values: selected });
+      } else if (filterType === "blanks-only") {
+        _viewState.filters.push({ type: "blanks", column: col, show_blanks: true });
+      } else if (filterType === "non-blanks") {
+        _viewState.filters.push({ type: "blanks", column: col, show_blanks: false });
+      }
+
+      _closeFilterPanel();
+      _fetchTableView();
+    });
+  });
+
+  // Close on outside click
+  setTimeout(() => {
+    document.addEventListener("click", _closeFilterPanelOutside);
+  }, 0);
+}
+
+function _closeFilterPanel() {
+  const p = document.getElementById("view-filter-panel");
+  if (p) p.remove();
+  document.removeEventListener("click", _closeFilterPanelOutside);
+}
+
+function _closeFilterPanelOutside(e) {
+  const p = document.getElementById("view-filter-panel");
+  if (p && !p.contains(e.target)) _closeFilterPanel();
 }
 
 async function loadRuns() {

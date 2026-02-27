@@ -6,6 +6,7 @@ Public API::
 """
 
 from fin123.formulas.errors import (
+    ENGINE_ERRORS,
     FormulaError,
     FormulaFunctionError,
     FormulaParseError,
@@ -20,6 +21,7 @@ from fin123.formulas.parser import (
 )
 
 __all__ = [
+    "ENGINE_ERRORS",
     "FormulaError",
     "FormulaFunctionError",
     "FormulaParseError",

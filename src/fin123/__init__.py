@@ -1,6 +1,6 @@
 """fin123 -- Polars-backed financial workbook engine with native versioning."""
 
-__version__ = "0.3.0"
+__version__ = "0.3.1"
 
 # Stable API version for core↔pod handshake.
 # Bump only when the core↔pod interface contract changes.

@@ -76,9 +76,9 @@ class TestFormulaClassification:
         assert len(result["error_message"]) > 0
 
     def test_unsupported_function(self):
-        result = classify_formula("=INDEX(A1)")
+        result = classify_formula("=OFFSET(A1, 1, 0)")
         assert result["classification"] == "unsupported_function"
-        assert "INDEX" in result["unsupported_functions"]
+        assert "OFFSET" in result["unsupported_functions"]
 
     def test_external_link(self):
         result = classify_formula("=[Budget.xlsx]Sheet1!A1")
@@ -112,7 +112,7 @@ class TestClassificationSummary:
                 "A1": "=SUM(1,2)",
                 "A2": "=AVERAGE(1,2)",
                 "A3": 42,
-                "A4": "=INDEX(A1)",
+                "A4": "=OFFSET(A1, 1, 0)",
                 "A5": "hello",
             },
         })
@@ -126,18 +126,18 @@ class TestClassificationSummary:
         """Unsupported functions are sorted by frequency."""
         xlsx_path = make_xlsx({
             "Sheet1": {
-                "A1": "=INDEX(A2)",
-                "A2": "=INDEX(A3)",
-                "A3": "=MATCH(A4,1)",
+                "A1": "=OFFSET(A2, 1, 0)",
+                "A2": "=OFFSET(A3, 1, 0)",
+                "A3": "=INDIRECT(A4)",
             },
         })
         report = import_xlsx(xlsx_path, tmp_project)
         top = report["top_unsupported_functions"]
         assert len(top) >= 1
-        # INDEX should appear with count >= 2
-        index_entry = next((t for t in top if t["name"] == "INDEX"), None)
-        assert index_entry is not None
-        assert index_entry["count"] >= 2
+        # OFFSET should appear with count >= 2
+        offset_entry = next((t for t in top if t["name"] == "OFFSET"), None)
+        assert offset_entry is not None
+        assert offset_entry["count"] >= 2
         # Sorted desc
         counts = [t["count"] for t in top]
         assert counts == sorted(counts, reverse=True)
@@ -193,7 +193,7 @@ class TestHealthIntegration:
         assert "addr" in parse_issue["target"]
 
     def test_unsupported_functions_produce_warning(self, make_xlsx, tmp_project):
-        xlsx_path = make_xlsx({"Sheet1": {"A1": "=INDEX(A2)"}})
+        xlsx_path = make_xlsx({"Sheet1": {"A1": "=OFFSET(A2, 1, 0)"}})
         import_xlsx(xlsx_path, tmp_project)
         svc = ProjectService(project_dir=tmp_project)
         health = svc.get_project_health()
@@ -596,7 +596,7 @@ class TestTraceLogGeneration:
         assert "non_ascii_chars:" in content
 
     def test_trace_log_contains_sanitized_preview(self, make_xlsx, tmp_project):
-        xlsx_path = make_xlsx({"Sheet1": {"A1": "=INDEX(A2)"}})
+        xlsx_path = make_xlsx({"Sheet1": {"A1": "=OFFSET(A2, 1, 0)"}})
         import_xlsx(xlsx_path, tmp_project)
         reports_dir = tmp_project / "import_reports"
         import_dirs = [d for d in reports_dir.iterdir() if d.is_dir() and "_import_" in d.name]
@@ -644,7 +644,7 @@ class TestTraceLogDiagnosticsInReport:
 
     def test_report_unsupported_has_diagnostics(self, make_xlsx, tmp_project):
         """import_report.json includes repr/non_ascii/sanitized for unsupported_function."""
-        xlsx_path = make_xlsx({"Sheet1": {"A1": "=INDEX(A2)"}})
+        xlsx_path = make_xlsx({"Sheet1": {"A1": "=OFFSET(A2, 1, 0)"}})
         report = import_xlsx(xlsx_path, tmp_project)
         uf_entries = [c for c in report["formula_classifications"]
                       if c["classification"] == "unsupported_function"]

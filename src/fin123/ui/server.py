@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from fin123.ui.service import ProjectService, import_xlsx_upload
+from fin123.ui.view_transforms import TableViewRequest
 
 # The singleton service is set at startup by ``create_app()``.
 _service: ProjectService | None = None
@@ -376,6 +377,30 @@ def _api_router():
         if "error" in result:
             raise HTTPException(404, result["error"])
         return result
+
+    @router.post("/outputs/table/view")
+    async def view_table(req: TableViewRequest) -> dict[str, Any]:
+        """Apply view-only sort/filter transforms to a table output."""
+        from fin123.ui.view_transforms import apply_view_transforms
+
+        result = _svc().get_table_output(req.name, req.run_id, limit=50000)
+        if "error" in result:
+            raise HTTPException(404, result["error"])
+
+        import polars as _pl
+
+        df = _pl.DataFrame(result["rows"])
+        df = apply_view_transforms(df, sorts=req.sorts, filters=req.filters)
+        total_rows = len(df)
+        df = df.head(req.limit)
+
+        return {
+            "table": req.name,
+            "columns": df.columns,
+            "rows": df.to_dicts(),
+            "total_rows": total_rows,
+            "limited": total_rows > req.limit,
+        }
 
     @router.get("/outputs/table/download")
     async def download_table(
