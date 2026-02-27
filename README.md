@@ -105,6 +105,7 @@ my_model/
 
 - [ARCHITECTURE.md](ARCHITECTURE.md) — Core architecture: two-graph model, formula engine, UI, storage, determinism.
 - [POD_BOUNDARY.md](POD_BOUNDARY.md) — What the enterprise Pod layer adds and how it extends Core.
+- [docs/RUNBOOK.md](docs/RUNBOOK.md) — Operational runbook: install, usage, troubleshooting, and release process.
 
 ## Enterprise Features
 
