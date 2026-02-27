@@ -90,6 +90,12 @@ Opens a local spreadsheet editor at `http://localhost:<port>` with:
 | `fin123-core export <dir>` | Export latest build outputs |
 | `fin123-core import-xlsx <file> <dir>` | Import an Excel workbook |
 | `fin123-core template list` | List available templates |
+| `fin123-core template show <name>` | Show template details and file tree |
+| `fin123-core artifact approve <name> <ver>` | Approve an artifact version |
+| `fin123-core artifact reject <name> <ver>` | Reject an artifact version |
+| `fin123-core artifact status <name> <ver>` | Show artifact approval status |
+| `fin123-core events <dir>` | Show structured event log |
+| `fin123-core run-log <dir> <run_id>` | Show event log for a specific run |
 | `fin123-core ui <dir>` | Launch the browser UI |
 
 ## Project Layout

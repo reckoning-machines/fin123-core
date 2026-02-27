@@ -78,11 +78,17 @@ Evaluates scalar and table graphs, writes outputs to `runs/<timestamp>_run_<n>/`
 ### 4. Verify
 
 ```bash
-fin123-core verify-build my_model
+# Verify the latest build
+fin123-core verify-build <run_id> --project my_model
+
+# With JSON output
+fin123-core verify-build <run_id> --project my_model --json
 ```
 
-Recomputes hashes for the latest build. Reports pass/fail for spec hash, input hashes,
+Recomputes hashes for the specified build run. Reports pass/fail for spec hash, input hashes,
 params hash, and export hashes.
+
+> **Note:** `verify-build` requires a completed build run. Run `fin123-core build` first, then pass the run ID printed by `build`.
 
 ## Browser UI
 
