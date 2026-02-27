@@ -10,6 +10,25 @@ import click
 from fin123 import __core_api_version__, __version__
 
 
+def _warn_namespace_collision() -> None:
+    """Warn if fin123-pod is installed in the same environment."""
+    import importlib.metadata
+    import sys
+
+    for dist_name in ("fin123-pod", "fin123_pod"):
+        try:
+            importlib.metadata.version(dist_name)
+        except importlib.metadata.PackageNotFoundError:
+            continue
+        print(
+            "WARNING: fin123-pod is installed in this environment; "
+            "fin123-core CLI may be shadowed. "
+            "Prefer using a clean venv or install only fin123 (Pod) for enterprise.",
+            file=sys.stderr,
+        )
+        break
+
+
 @click.group()
 @click.version_option(
     version=f"{__version__} (core_api={__core_api_version__})",
@@ -20,6 +39,7 @@ def main() -> None:
 
     Lifecycle: Edit -> Commit -> Build -> Verify
     """
+    _warn_namespace_collision()
 
 
 # ---------------------------------------------------------------------------
