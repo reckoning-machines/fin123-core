@@ -1,0 +1,25 @@
+{
+  "demo": "batch_sweep",
+  "scenario_count": 3,
+  "scenarios": [
+    {
+      "export_hash": "2d7ceefb0358ce994cfcb1508c495a2ba4b3fcf260ef1d4798d2abf87259a997",
+      "index": 0,
+      "params_hash": "95ba9db5a81af5ee4012ca9ff8384474fdb2216784a8d6b961f302aa9854df32",
+      "scenario": "base"
+    },
+    {
+      "export_hash": "31d55c66bcc03fe652bc5d0b807c5843b2c7fefbbe7f2e3e2b02f36a5d912d96",
+      "index": 1,
+      "params_hash": "37fcdb16356c8c40f2c37559e09fdb045afaceef714762ffd993f630cce9a8bb",
+      "scenario": "bull"
+    },
+    {
+      "export_hash": "1a1cfbba422918aec1ee3ff20b1db992af647436a6fc34ddcb88e1d8f6de7878",
+      "index": 2,
+      "params_hash": "3798e461baba55bbb78f4f14d69ace380f528264b79eed0451deb65c446e7aad",
+      "scenario": "bear"
+    }
+  ],
+  "template": "single_company"
+}

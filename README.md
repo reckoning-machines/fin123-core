@@ -33,8 +33,9 @@ pip install -e ".[dev]"
 ```
 
 > **End-user binaries** (no Python required) are available on
-> [GitHub Releases](https://github.com/reckoning-machines/fin123-core/releases).
-> PyPI is intended for developer / library installs.
+> [GitHub Releases](https://github.com/reckoning-machines/fin123-core/releases)
+> for macOS (arm64) and Windows (x86_64). PyPI is intended for developer
+> and library installs.
 
 ### Usage
 
@@ -97,6 +98,26 @@ Opens a local spreadsheet editor at `http://localhost:<port>` with:
 | `fin123-core events <dir>` | Show structured event log |
 | `fin123-core run-log <dir> <run_id>` | Show event log for a specific run |
 | `fin123-core ui <dir>` | Launch the browser UI |
+| `fin123-core demo ai-governance` | Demo: plugin validation + compliance report |
+| `fin123-core demo deterministic-build` | Demo: scaffold, build, verify with stable hashes |
+| `fin123-core demo batch-sweep` | Demo: 3-scenario parameter grid with stable manifest |
+| `fin123-core demo data-guardrails` | Demo: join validation failures + success |
+
+## Demos
+
+fin123-core ships with four built-in demos that exercise key capabilities
+end-to-end. Each demo is self-contained and produces deterministic output.
+
+```bash
+# Run a single demo
+fin123-core demo ai-governance
+fin123-core demo deterministic-build
+fin123-core demo batch-sweep
+fin123-core demo data-guardrails
+```
+
+No external data or configuration required. Demos create temporary project
+directories, run the full build lifecycle, and print results to stdout.
 
 ## Project Layout
 

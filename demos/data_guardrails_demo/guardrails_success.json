@@ -1,0 +1,11 @@
+{
+  "demo": "data_guardrails",
+  "export_hash": "aad9cfd76a8bd9e03d56296485210d32cccafe7594028c381b95b0b5765d38db",
+  "scalars": [
+    "eps"
+  ],
+  "status": "pass",
+  "tables": [
+    "priced_estimates"
+  ]
+}

@@ -1,0 +1,11 @@
+{
+  "error_message": "join_left validate='many_to_one': right table has 1 duplicate key group(s) on ['ticker']. Sample duplicates: {'ticker': 'AAPL'}. Use validate='many_to_many' to allow duplicates.",
+  "error_type": "ValueError",
+  "fixtures": [
+    {
+      "description": "estimates.parquet has duplicate ticker 'AAPL' -- violates many_to_one join validation",
+      "fixture": "duplicate_key"
+    }
+  ],
+  "status": "expected_failure"
+}

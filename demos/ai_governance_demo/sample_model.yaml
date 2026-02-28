@@ -1,0 +1,25 @@
+version: 1
+
+params:
+  ticker: DEMO
+  multiple: 10
+  discount_rate: 0.08
+
+tables:
+  assumptions:
+    source: inputs/assumptions.csv
+    format: csv
+
+outputs:
+  - name: base_revenue
+    type: scalar
+    value: 100000.0
+
+  - name: projected_revenue
+    type: scalar
+    formula: "=base_revenue * (1 + discount_rate)"
+
+assertions:
+  - name: revenue_positive
+    expr: "$base_revenue > 0"
+    severity: error
