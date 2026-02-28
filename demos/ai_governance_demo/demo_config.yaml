@@ -1,0 +1,8 @@
+schema_version: 1
+demo_name: ai_governance
+description: "AI-generated plugin validation, deterministic build hash, compliance report"
+policy:
+  require_deterministic: true
+  require_plugin_meta: true
+  forbid_network: true
+  forbid_nondeterministic_imports: true

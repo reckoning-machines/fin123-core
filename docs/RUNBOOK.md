@@ -122,6 +122,83 @@ fin123-core batch build my_model --params-file params.csv --max-workers 4
 
 The CSV must have one column per parameter. One build per row.
 
+## Demos
+
+fin123-core includes four built-in demos. Each is self-contained, creates
+a temporary project directory, runs the full build lifecycle, and prints
+results to stdout. No external data or configuration is required.
+
+```bash
+# AI governance -- plugin validation + compliance report
+fin123-core demo ai-governance
+
+# Deterministic build -- scaffold, build, verify with stable hashes
+fin123-core demo deterministic-build
+
+# Batch sweep -- 3-scenario parameter grid with stable manifest
+fin123-core demo batch-sweep
+
+# Data guardrails -- join validation failures + success cases
+fin123-core demo data-guardrails
+```
+
+All demos produce deterministic output. Running the same demo twice on the
+same version of fin123-core will produce identical results (no timestamps
+or run IDs appear in output that would cause hash drift).
+
+### Running all demos as a test suite
+
+```bash
+pytest tests/test_demos.py -v
+```
+
+This executes every demo in a subprocess and asserts a zero exit code.
+
+## Verifying Determinism (Hash Stability)
+
+fin123-core guarantees that identical inputs produce identical outputs.
+To verify this property after a build:
+
+### Single-build verification
+
+```bash
+fin123-core build my_model
+# => Build saved to: <run_id>
+
+fin123-core verify-build <run_id> --project my_model
+# => Status: PASS -- All checks passed.
+```
+
+`verify-build` recomputes SHA-256 hashes for the spec, inputs, params,
+and exports, then compares them against the hashes stored at build time.
+Any drift causes a FAIL.
+
+### Cross-run determinism check
+
+Build twice with the same inputs and compare:
+
+```bash
+fin123-core build my_model
+# => Build saved to: <run_a>
+
+fin123-core build my_model
+# => Build saved to: <run_b>
+
+fin123-core diff run <run_a> <run_b> --project my_model
+# => No differences (scalars match, tables match)
+```
+
+If `diff run` reports differences, inspect `run_meta.json` in each run
+directory to identify which inputs diverged.
+
+### Demo-level determinism
+
+The `deterministic-build` demo exercises this workflow end-to-end:
+
+```bash
+fin123-core demo deterministic-build
+```
+
 ## Diff
 
 ```bash
@@ -223,6 +300,127 @@ fin123-core requires `polars>=1.0`. Check:
 ```bash
 python -c "import polars; print(polars.__version__)"
 ```
+
+### Demo fails with `ModuleNotFoundError`
+
+Demos import from the `demos/` package at the repo root. Ensure you are
+running from a source checkout with the package installed in editable mode:
+
+```bash
+pip install -e ".[dev]"
+```
+
+### verify-build reports FAIL unexpectedly
+
+Common causes:
+
+- Input files were modified between the build and verification.
+- The project was built with a different version of fin123-core.
+- The hash cache is stale. Clear it and rebuild:
+
+```bash
+fin123-core clear-cache my_model
+fin123-core build my_model
+```
+
+### PyInstaller build fails on macOS
+
+Ensure you are using Python 3.12. Universal2 builds are not supported.
+The build script targets the native architecture (`arm64` on Apple Silicon).
+
+```bash
+python --version   # must be 3.12.x
+which python       # must point to a native arm64 Python
+```
+
+---
+
+## Building Installers
+
+fin123-core produces standalone binaries via PyInstaller. CI builds both
+macOS and Windows automatically on tag push; this section covers manual
+local builds.
+
+### Prerequisites
+
+- Python 3.12
+- PyInstaller: `pip install pyinstaller`
+- The project installed in editable mode: `pip install -e .`
+
+### macOS (arm64)
+
+```bash
+bash scripts/build_macos.sh
+```
+
+Produces `dist/fin123-core-<version>-macos-arm64.zip` and
+`dist/SHA256SUMS.txt`.
+
+### Windows (x86_64)
+
+```powershell
+pwsh scripts/build_windows.ps1
+```
+
+Produces `dist/fin123-core-<version>-windows-x86_64.zip` and
+`dist/SHA256SUMS.txt`.
+
+### Verifying checksums
+
+After building, verify the ZIP integrity:
+
+```bash
+# macOS / Linux
+cd dist
+shasum -a 256 -c SHA256SUMS.txt
+
+# Windows
+certutil -hashfile fin123-core-<version>-windows-x86_64.zip SHA256
+```
+
+### Regenerating checksums only
+
+If ZIPs already exist and you need to regenerate `SHA256SUMS.txt`:
+
+```bash
+python scripts/checksums.py
+```
+
+## Publishing a Release
+
+### Automated (recommended)
+
+Push a tag matching `core-vX.Y.Z` to trigger CI:
+
+```bash
+git tag core-vX.Y.Z
+git push origin core-vX.Y.Z
+```
+
+This triggers two workflows:
+
+1. `release.yml` -- runs tests, builds binaries on macOS and Windows,
+   creates a GitHub Release with ZIPs and SHA256SUMS.txt.
+2. `pypi-release.yml` -- builds sdist + wheel, publishes to PyPI via
+   Trusted Publishing.
+
+### Manual
+
+If CI is unavailable, build locally and create the release manually:
+
+```bash
+# 1. Build macOS binary
+bash scripts/build_macos.sh
+
+# 2. Create release and upload (requires gh CLI)
+gh release create core-vX.Y.Z \
+  --title "core-vX.Y.Z" \
+  --prerelease \
+  dist/fin123-core-*-macos-arm64.zip \
+  dist/SHA256SUMS.txt
+```
+
+Windows binaries must be built on a Windows machine or via CI.
 
 ---
 

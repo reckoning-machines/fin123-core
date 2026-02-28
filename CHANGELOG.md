@@ -2,6 +2,30 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.2] — 2026-02-28
+
+### Added
+
+- **Demo suite** — four built-in demos runnable via `fin123-core demo <name>`:
+  - `ai-governance` — plugin validation and compliance report.
+  - `deterministic-build` — scaffold, build, verify with stable hashes.
+  - `batch-sweep` — 3-scenario parameter grid with stable manifest.
+  - `data-guardrails` — join validation failures and success cases.
+- **Demo test coverage** — `tests/test_demos.py` and
+  `tests/test_ai_governance_demo.py` verify demo correctness and
+  deterministic output (no timestamps or run IDs in expected values).
+
+### Fixed
+
+- **Deterministic demo outputs** — all demo scripts produce stable,
+  hash-verifiable results with no non-deterministic fields in output.
+
+### Documentation
+
+- Updated `README.md` with demo commands and current install instructions.
+- Updated `docs/RUNBOOK.md` with demo execution, determinism verification,
+  installer build procedures, release publishing, and troubleshooting.
+
 ## [0.3.1] — 2026-02-27
 
 ### Added

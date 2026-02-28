@@ -1,0 +1,16 @@
+{
+  "demo": "deterministic_build",
+  "export_hash": "2d7ceefb0358ce994cfcb1508c495a2ba4b3fcf260ef1d4798d2abf87259a997",
+  "params_hash": "95ba9db5a81af5ee4012ca9ff8384474fdb2216784a8d6b961f302aa9854df32",
+  "scalars": [
+    "base_revenue",
+    "margin",
+    "net_income",
+    "projected_revenue"
+  ],
+  "tables": [
+    "summary"
+  ],
+  "template": "single_company",
+  "verify_status": "pass"
+}

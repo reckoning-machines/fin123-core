@@ -1,0 +1,39 @@
+{
+  "ai_generated": true,
+  "artifact_version": "v1",
+  "compliance_status": "APPROVED",
+  "deterministic_build_hash": "25b7f94ac5bbd3dc50774400dd736a95e9a791e985d55cdd326a988f381f5f64",
+  "export_hash": "92b5549b62f47e41c548567a6b3a758ccb8416a7dcd771a31f6b8c4f7214eb87",
+  "generated_by": "ai",
+  "model": "demo-llm",
+  "plugin_output_value": 108000.0,
+  "plugin_version": 1,
+  "policy_checks": [
+    {
+      "check": "plugin_meta_fields",
+      "status": "PASS"
+    },
+    {
+      "check": "forbidden_imports",
+      "status": "PASS"
+    },
+    {
+      "check": "network_patterns",
+      "status": "PASS"
+    },
+    {
+      "check": "register_entrypoint",
+      "status": "PASS"
+    },
+    {
+      "check": "deterministic_transform",
+      "status": "PASS"
+    },
+    {
+      "check": "engine_build_executed",
+      "status": "PASS"
+    }
+  ],
+  "prompt_hash": "demo_prompt_hash_v1",
+  "validation_status": "PASS"
+}
