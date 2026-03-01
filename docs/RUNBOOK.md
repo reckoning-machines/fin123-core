@@ -381,6 +381,22 @@ shasum -a 256 -c SHA256SUMS.txt
 certutil -hashfile fin123-core-<version>-windows-x86_64.zip SHA256
 ```
 
+### Release smoke test
+
+After publishing a release, validate that the GitHub Release assets can be
+downloaded, verified, unpacked, and executed:
+
+```bash
+sh scripts/release_smoke.sh
+
+# Or override the tag:
+RELEASE_TAG=core-v0.4.0 sh scripts/release_smoke.sh
+```
+
+The script downloads both platform zips and `SHA256SUMS.txt`, verifies
+checksums, unpacks the macOS binary, and exercises `--version`, `--help`,
+and `doctor --json`. Exits non-zero on any failure.
+
 ### Regenerating checksums only
 
 If ZIPs already exist and you need to regenerate `SHA256SUMS.txt`:
