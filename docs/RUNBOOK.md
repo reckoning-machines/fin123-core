@@ -1,6 +1,8 @@
 # Runbook — fin123-core
 
 Operational guide for installing, running, and troubleshooting fin123-core.
+For the full CLI specification (command tree, exit codes, JSON contract),
+see [CLI_SPEC.md](CLI_SPEC.md).
 
 ## Prerequisites
 
