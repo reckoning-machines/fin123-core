@@ -3,7 +3,7 @@
 ## Command
 
 ```bash
-fin123-core demo ai-governance
+fin123 demo ai-governance
 ```
 
 ## Files produced

@@ -3,7 +3,7 @@
 ## Command
 
 ```bash
-fin123-core demo batch-sweep
+fin123 demo batch-sweep
 ```
 
 ## Files produced

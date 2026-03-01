@@ -3,7 +3,7 @@
 ## Command
 
 ```bash
-fin123-core demo data-guardrails
+fin123 demo data-guardrails
 ```
 
 ## Files produced

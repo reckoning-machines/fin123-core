@@ -8,7 +8,7 @@ This document inventories the existing demo/template set in the repo and defines
 ## Definitions (Current vs Target)
 
 ### Template
-- A `fin123-core new ... --template <name>` project scaffold.
+- A `fin123 init ... --template <name>` project scaffold.
 - Ships with a minimal runnable model.
 - Should be deterministic and reproducible.
 
@@ -25,9 +25,9 @@ This document inventories the existing demo/template set in the repo and defines
 
 ### Templates list (as implemented)
 - Command to list templates:
-  - `fin123-core template list` (text output)
-  - `fin123-core template list --json` (JSON output)
-  - `fin123-core template show <name>` (show template metadata and file tree)
+  - `fin123 template list` (text output)
+  - `fin123 template list --json` (JSON output)
+  - `fin123 template show <name>` (show template metadata and file tree)
 - Templates found (3 bundled in core):
   - `single_company` -> `src/fin123/templates/single_company/` -> Single-company financial model with scenarios, assertions, and verify
   - `universe_batch` -> `src/fin123/templates/universe_batch/` -> Parameterized model with batch builds across a universe of tickers
@@ -37,7 +37,7 @@ For each template below, record:
 
 #### Template: single_company
 - Location: `src/fin123/templates/single_company/`
-- Entry command: `fin123-core new <dir> --template single_company [--set ticker=AAPL]`
+- Entry command: `fin123 init <dir> --template single_company [--set ticker=AAPL]`
 - Files:
   - `template.yaml` (removed after scaffold)
   - `workbook.yaml` (version 1; params: ticker, currency, tax_rate, revenue_growth)
@@ -50,7 +50,7 @@ For each template below, record:
   - `runs/<timestamp>_run_<n>/outputs/scalars.json` (base_revenue, projected_revenue, net_income, margin)
   - `runs/<timestamp>_run_<n>/outputs/summary.parquet` (grouped by category)
   - Snapshots in `snapshots/workbook/v0001/workbook.yaml`
-- Verify-build: `fin123-core verify-build <run_id> --project <dir>` -- checks workbook_spec_hash, input_hashes, export_hash, params_hash, row counts
+- Verify-build: `fin123 verify <run_id> --project <dir>` -- checks workbook_spec_hash, input_hashes, export_hash, params_hash, row counts
 - Scenarios: base (revenue_growth=0.05), bull (0.10), bear (-0.02)
 - Assertions: net_income_positive (error), margin_reasonable (warn)
 - Template params: ticker (string, default ACME), company_name (string, default ACME), currency (string, default USD)
@@ -65,7 +65,7 @@ For each template below, record:
 
 #### Template: universe_batch
 - Location: `src/fin123/templates/universe_batch/`
-- Entry command: `fin123-core new <dir> --template universe_batch [--set universe_name=sp5_demo]`
+- Entry command: `fin123 init <dir> --template universe_batch [--set universe_name=sp5_demo]`
 - Files:
   - `template.yaml` (removed after scaffold)
   - `workbook.yaml` (version 1; params: ticker, weight, universe)
@@ -80,8 +80,8 @@ For each template below, record:
   - `runs/<timestamp>_run_<n>/outputs/scalars.json` (ticker_label, weight_pct, universe_label)
   - `runs/<timestamp>_run_<n>/outputs/ticker_row.parquet` (filtered row for ticker)
   - Plans: ticker_row (filter universe by $ticker)
-- Verify-build: `fin123-core verify-build <run_id> --project <dir>`
-- Batch build: `fin123-core batch build <dir> --params-file inputs/params.csv`
+- Verify-build: `fin123 verify <run_id> --project <dir>`
+- Batch build: `fin123 batch build <dir> --params-file inputs/params.csv`
 - Template params: universe_name (string, default sp5_demo)
 - Notes on determinism issues:
   - batch.py generates a UUID for build_batch_id (non-deterministic batch ID; not in export hashes)
@@ -92,7 +92,7 @@ For each template below, record:
 
 #### Template: demo_fin123
 - Location: `src/fin123/templates/demo_fin123/`
-- Entry command: `fin123-core new <dir> --template demo_fin123 [--set ticker=AAPL]`
+- Entry command: `fin123 init <dir> --template demo_fin123 [--set ticker=AAPL]`
 - Files:
   - `template.yaml` (removed after scaffold)
   - `workbook.yaml` (version 1; params: ticker, multiple, discount_rate)
@@ -111,7 +111,7 @@ For each template below, record:
   - `runs/<timestamp>_run_<n>/outputs/priced_estimates.parquet` (join_left prices+estimates, sorted by ticker,date)
   - Plans: priced_estimates (join_left + sort)
   - Sheets: Valuation (with PARAM() proxies)
-- Verify-build: `fin123-core verify-build <run_id> --project <dir>`
+- Verify-build: `fin123 verify <run_id> --project <dir>`
 - Assertions: eps_positive (error), discount_rate_sane (error), valuation_positive (warn)
 - Workflows: build_and_verify (build then verify), scenario_fail (discount_rate=0.95 triggers assertion failure)
 - Template params: ticker (string, default AAPL)
@@ -132,13 +132,13 @@ List any non-template demos (scripts / CLI commands / docs) already present.
 
 - Name: demo_fin123 template README walkthrough
 - Location: `src/fin123/templates/demo_fin123/README.md`
-- How to run: Manual sequence: `fin123-core new`, `commit`, `build`, `verify-build`, `diff run`
+- How to run: Manual sequence: `fin123 init`, `commit`, `build`, `verify`, `diff run`
 - Outputs: Run directories with scalars.json, priced_estimates.parquet, verify_report.json
 - Notes: Manual steps only; no single CLI entrypoint. `release` and `workflow run` steps require fin123-pod.
 
 - Name: project.py scaffold_project() demo workbook
-- Location: `src/fin123/project.py` (used by `fin123-core new <dir>` without --template)
-- How to run: `fin123-core new <dir>` (creates a default demo project identical to demo_fin123 content)
+- Location: `src/fin123/project.py` (used by `fin123 init <dir>` without --template)
+- How to run: `fin123 init <dir>` (creates a default demo project identical to demo_fin123 content)
 - Outputs: Same as demo_fin123 template
 - Notes: Legacy scaffold; duplicates demo_fin123 template functionality.
 
@@ -151,7 +151,7 @@ List any non-template demos (scripts / CLI commands / docs) already present.
 - single_company has scenario support but no automated demo runner
 
 ### What is missing entirely
-- No `fin123-core demo <name>` CLI command group
+- No `fin123 demo <name>` CLI command group
 - No AI governance / plugin validation demo
 - No data guardrails demo with intentional failure fixtures
 - No deterministic summary JSON outputs (without timestamps) for demos
@@ -188,7 +188,7 @@ For each demo, we require:
 - No wall-clock timestamps in outputs
 - Stable JSON output ordering
 - Minimal CLI entrypoints:
-  - `fin123-core demo <name>`
+  - `fin123 demo <name>`
 - Tests for demo determinism where possible
 
 ---
