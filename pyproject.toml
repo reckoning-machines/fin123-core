@@ -37,7 +37,7 @@ dev = [
 ]
 
 [project.scripts]
-fin123-core = "fin123.cli_core:main"
+fin123 = "fin123.cli_core:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fin123"]

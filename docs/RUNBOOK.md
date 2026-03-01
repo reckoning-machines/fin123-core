@@ -30,18 +30,18 @@ pip install -e ".[dev]"
 ### Verify installation
 
 ```bash
-fin123-core --version
-fin123-core template list
+fin123 --version
+fin123 template list
 ```
 
 ## Create a Project
 
 ```bash
 # From a template
-fin123-core new my_model --template single_company --set ticker=AAPL
+fin123 init my_model --template single_company --set ticker=AAPL
 
 # From the demo template
-fin123-core new demo --template demo_fin123
+fin123 init demo --template demo_fin123
 ```
 
 This creates a project directory with `workbook.yaml`, `fin123.yaml`, and sample input files.
@@ -50,12 +50,12 @@ This creates a project directory with `workbook.yaml`, `fin123.yaml`, and sample
 
 ### 1. Edit
 
-Edit `workbook.yaml` directly or use the browser UI (`fin123-core ui <dir>`).
+Edit `workbook.yaml` directly or use the browser UI (`fin123 ui <dir>`).
 
 ### 2. Commit
 
 ```bash
-fin123-core commit my_model
+fin123 commit my_model
 ```
 
 Writes the current workbook to `workbook.yaml` and creates an immutable snapshot
@@ -64,13 +64,13 @@ Writes the current workbook to `workbook.yaml` and creates an immutable snapshot
 ### 3. Build
 
 ```bash
-fin123-core build my_model
+fin123 build my_model
 
 # With parameter overrides
-fin123-core build my_model --set tax_rate=0.25
+fin123 build my_model --set tax_rate=0.25
 
 # With a named scenario
-fin123-core build my_model --scenario bear_case
+fin123 build my_model --scenario bear_case
 ```
 
 Evaluates scalar and table graphs, writes outputs to `runs/<timestamp>_run_<n>/`.
@@ -79,24 +79,24 @@ Evaluates scalar and table graphs, writes outputs to `runs/<timestamp>_run_<n>/`
 
 ```bash
 # Verify the latest build
-fin123-core verify-build <run_id> --project my_model
+fin123 verify <run_id> --project my_model
 
 # With JSON output
-fin123-core verify-build <run_id> --project my_model --json
+fin123 verify <run_id> --project my_model --json
 ```
 
 Recomputes hashes for the specified build run. Reports pass/fail for spec hash, input hashes,
 params hash, and export hashes.
 
-> **Note:** `verify-build` requires a completed build run. Run `fin123-core build` first, then pass the run ID printed by `build`.
+> **Note:** `verify` requires a completed build run. Run `fin123 build` first, then pass the run ID printed by `build`.
 
 ## Browser UI
 
 ```bash
-fin123-core ui my_model
+fin123 ui my_model
 
 # Specify port, skip auto-open
-fin123-core ui my_model --port 8080 --no-open
+fin123 ui my_model --port 8080 --no-open
 ```
 
 The UI runs on localhost only. Key shortcuts:
@@ -114,36 +114,36 @@ The UI runs on localhost only. Key shortcuts:
 ## Batch Builds
 
 ```bash
-fin123-core batch build my_model --params-file params.csv
+fin123 batch build my_model --params-file params.csv
 
 # With parallelism
-fin123-core batch build my_model --params-file params.csv --max-workers 4
+fin123 batch build my_model --params-file params.csv --max-workers 4
 ```
 
 The CSV must have one column per parameter. One build per row.
 
 ## Demos
 
-fin123-core includes four built-in demos. Each is self-contained, creates
+fin123 includes four built-in demos. Each is self-contained, creates
 a temporary project directory, runs the full build lifecycle, and prints
 results to stdout. No external data or configuration is required.
 
 ```bash
 # AI governance -- plugin validation + compliance report
-fin123-core demo ai-governance
+fin123 demo ai-governance
 
 # Deterministic build -- scaffold, build, verify with stable hashes
-fin123-core demo deterministic-build
+fin123 demo deterministic-build
 
 # Batch sweep -- 3-scenario parameter grid with stable manifest
-fin123-core demo batch-sweep
+fin123 demo batch-sweep
 
 # Data guardrails -- join validation failures + success cases
-fin123-core demo data-guardrails
+fin123 demo data-guardrails
 ```
 
 All demos produce deterministic output. Running the same demo twice on the
-same version of fin123-core will produce identical results (no timestamps
+same version of fin123 will produce identical results (no timestamps
 or run IDs appear in output that would cause hash drift).
 
 ### Running all demos as a test suite
@@ -156,20 +156,20 @@ This executes every demo in a subprocess and asserts a zero exit code.
 
 ## Verifying Determinism (Hash Stability)
 
-fin123-core guarantees that identical inputs produce identical outputs.
+fin123 guarantees that identical inputs produce identical outputs.
 To verify this property after a build:
 
 ### Single-build verification
 
 ```bash
-fin123-core build my_model
+fin123 build my_model
 # => Build saved to: <run_id>
 
-fin123-core verify-build <run_id> --project my_model
+fin123 verify <run_id> --project my_model
 # => Status: PASS -- All checks passed.
 ```
 
-`verify-build` recomputes SHA-256 hashes for the spec, inputs, params,
+`verify` recomputes SHA-256 hashes for the spec, inputs, params,
 and exports, then compares them against the hashes stored at build time.
 Any drift causes a FAIL.
 
@@ -178,13 +178,13 @@ Any drift causes a FAIL.
 Build twice with the same inputs and compare:
 
 ```bash
-fin123-core build my_model
+fin123 build my_model
 # => Build saved to: <run_a>
 
-fin123-core build my_model
+fin123 build my_model
 # => Build saved to: <run_b>
 
-fin123-core diff run <run_a> <run_b> --project my_model
+fin123 diff run <run_a> <run_b> --project my_model
 # => No differences (scalars match, tables match)
 ```
 
@@ -196,26 +196,26 @@ directory to identify which inputs diverged.
 The `deterministic-build` demo exercises this workflow end-to-end:
 
 ```bash
-fin123-core demo deterministic-build
+fin123 demo deterministic-build
 ```
 
 ## Diff
 
 ```bash
 # Compare two builds
-fin123-core diff run <run_a> <run_b> --project my_model
+fin123 diff run <run_a> <run_b> --project my_model
 
 # Compare two workbook versions
-fin123-core diff version v0001 v0002 --project my_model
+fin123 diff version v0001 v0002 --project my_model
 
 # Machine-readable output
-fin123-core diff run <run_a> <run_b> --project my_model --json
+fin123 diff run <run_a> <run_b> --project my_model --json
 ```
 
 ## XLSX Import
 
 ```bash
-fin123-core import-xlsx model.xlsx my_model
+fin123 import-xlsx model.xlsx my_model
 ```
 
 Imports worksheets, cell values, formulas (as-is), and font colors. Writes an import
@@ -226,13 +226,13 @@ external_link, or plugin_formula.
 
 ```bash
 # Dry run (report only)
-fin123-core gc my_model --dry-run
+fin123 gc my_model --dry-run
 
 # Actually delete
-fin123-core gc my_model
+fin123 gc my_model
 
 # Clear hash cache too
-fin123-core clear-cache my_model
+fin123 clear-cache my_model
 ```
 
 Configure limits in `fin123.yaml`:
@@ -246,12 +246,13 @@ ttl_days: 30
 
 ## Troubleshooting
 
-### `fin123-core: command not found`
+### `fin123: command not found`
 
 Ensure the package is installed and your PATH includes pip's script directory:
 
 ```bash
 pip show fin123-core
+fin123 --help
 python -m fin123.cli_core --help    # fallback
 ```
 
@@ -260,12 +261,12 @@ python -m fin123.cli_core --help    # fallback
 The UI has unsaved changes. Commit first:
 
 ```bash
-fin123-core commit my_model
+fin123 commit my_model
 ```
 
 ### Formula parse errors
 
-Check the formula syntax. fin123-core uses a Lark LALR(1) parser, not Excel's parser.
+Check the formula syntax. fin123 uses a Lark LALR(1) parser, not Excel's parser.
 Common issues:
 - Range expressions (`A1:A10`) are not supported — use named ranges instead.
 - `INDIRECT()`, `OFFSET()` are not supported.
@@ -284,18 +285,18 @@ max_import_total_cells: 500000
 ### Build outputs differ across machines
 
 Verify inputs are identical. Check `run_meta.json` → `input_hashes` for each build.
-fin123-core guarantees deterministic outputs for identical inputs, but different input
+fin123 guarantees deterministic outputs for identical inputs, but different input
 file contents will produce different results.
 
 ### UI won't start (port in use)
 
 ```bash
-fin123-core ui my_model --port 9999
+fin123 ui my_model --port 9999
 ```
 
 ### Polars version mismatch
 
-fin123-core requires `polars>=1.0`. Check:
+fin123 requires `polars>=1.0`. Check:
 
 ```bash
 python -c "import polars; print(polars.__version__)"
@@ -310,7 +311,7 @@ running from a source checkout with the package installed in editable mode:
 pip install -e ".[dev]"
 ```
 
-### verify-build reports FAIL unexpectedly
+### verify reports FAIL unexpectedly
 
 Common causes:
 
@@ -319,8 +320,8 @@ Common causes:
 - The hash cache is stale. Clear it and rebuild:
 
 ```bash
-fin123-core clear-cache my_model
-fin123-core build my_model
+fin123 clear-cache my_model
+fin123 build my_model
 ```
 
 ### PyInstaller build fails on macOS
@@ -337,7 +338,7 @@ which python       # must point to a native arm64 Python
 
 ## Building Installers
 
-fin123-core produces standalone binaries via PyInstaller. CI builds both
+fin123 produces standalone binaries via PyInstaller. CI builds both
 macOS and Windows automatically on tag push; this section covers manual
 local builds.
 
@@ -424,9 +425,9 @@ Windows binaries must be built on a Windows machine or via CI.
 
 ---
 
-## fin123-core Release Runbook (v0.3+)
+## fin123 Release Runbook (v0.3+)
 
-End-to-end procedure for publishing a new fin123-core release. A single
+End-to-end procedure for publishing a new fin123 release. A single
 `core-vX.Y.Z` tag triggers both PyPI and binary release workflows.
 
 ### Preconditions
@@ -446,8 +447,8 @@ print(f'pyproject.toml version: {v}')
 
 # 3. CLI prints correct version
 pip install -e .
-fin123-core --version
-# Expected: fin123-core, version X.Y.Z (core_api=1)
+fin123 --version
+# Expected: fin123, version X.Y.Z (core_api=0.3)
 
 # 4. Tests pass
 pytest --tb=short -q
@@ -490,7 +491,7 @@ Verify the published package:
 python -m venv /tmp/f123-verify
 source /tmp/f123-verify/bin/activate
 pip install fin123-core==X.Y.Z
-fin123-core --version
+fin123 --version
 deactivate
 rm -rf /tmp/f123-verify
 ```
