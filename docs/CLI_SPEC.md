@@ -235,3 +235,19 @@ fin123 registry status --json
 # Exit code: 0
 # {"ok": true, "cmd": "registry status", ... "data": {"backend": "postgres", "connected": true}}
 ```
+
+## CLI Contract Check
+
+CI runs `scripts/cli_contract_check.py` to detect unintended changes to the
+CLI surface. The check uses a hidden internal command (`fin123 __contract`)
+that emits a deterministic JSON representation of the full command tree,
+including command names, options, arguments, and global flags. The SHA-256
+hash of this JSON is compared against `docs/CLI_CONTRACT_SHA256.txt`.
+
+The `__contract` command is not part of the public user-facing surface and
+does not appear in `--help` output. To update the expected hash after an
+intentional CLI change:
+
+```bash
+python scripts/cli_contract_check.py --write
+```
