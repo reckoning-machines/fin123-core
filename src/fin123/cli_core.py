@@ -1239,5 +1239,57 @@ def server_status(ctx: click.Context) -> None:
     _enterprise_stub(ctx, "server status")
 
 
+# ---------------------------------------------------------------------------
+# Internal: CLI surface contract (hidden, used by CI contract check)
+# ---------------------------------------------------------------------------
+
+
+def _collect_commands(group: click.Group, prefix: str = "") -> list[dict]:
+    """Recursively collect the command tree as a sorted list of dicts."""
+    result = []
+    for name in sorted(group.list_commands(click.Context(group, info_name="fin123"))):
+        cmd = group.get_command(click.Context(group, info_name="fin123"), name)
+        if cmd is None:
+            continue
+        full_name = f"{prefix} {name}".strip() if prefix else name
+        entry: dict[str, Any] = {"name": full_name}
+        # Collect option names and positional argument names
+        options = []
+        arguments = []
+        for param in cmd.params:
+            if isinstance(param, click.Option):
+                # Use the longest option string
+                opt_name = max(param.opts, key=len) if param.opts else param.name
+                options.append(opt_name)
+            elif isinstance(param, click.Argument):
+                arguments.append(param.name)
+        entry["options"] = sorted(options)
+        entry["arguments"] = sorted(arguments)
+        entry["hidden"] = cmd.hidden
+        if isinstance(cmd, click.Group):
+            entry["subcommands"] = _collect_commands(cmd, full_name)
+        result.append(entry)
+    return result
+
+
+@main.command("__contract", hidden=True)
+@click.pass_context
+def contract_cmd(ctx: click.Context) -> None:
+    """Emit the CLI surface contract as deterministic JSON (internal)."""
+    # Collect global flags from the root group
+    global_flags = []
+    for param in main.params:
+        if isinstance(param, click.Option):
+            opt_name = max(param.opts, key=len) if param.opts else param.name
+            global_flags.append(opt_name)
+
+    contract = {
+        "version": __version__,
+        "global_flags": sorted(global_flags),
+        "commands": _collect_commands(main),
+    }
+    click.echo(json.dumps(contract, indent=2, sort_keys=True))
+
+
 if __name__ == "__main__":
     main()
