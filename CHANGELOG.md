@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.3] — 2026-03-01
+
+### Added
+
+- **Unified CLI entrypoint** — single `fin123` command replaces `fin123-core`.
+  All subcommands (`init`, `build`, `commit`, `verify`, `demo`, `doctor`, etc.)
+  available under one executable.
+- **`fin123 doctor`** — deterministic preflight validation with JSON contract
+  output (`--json`), structured exit codes, and enterprise-stub checks.
+- **CLI specification** — `docs/CLI_SPEC.md` documents the full command tree,
+  exit codes, JSON output contract, and doctor checks.
+- **CI contract drift check** — workflow step validates CLI spec stays in sync
+  with implemented commands.
+
 ## [0.3.2] — 2026-02-28
 
 ### Added
