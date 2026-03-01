@@ -18,13 +18,7 @@ It runs entirely on your machine — no database, no server, no account required
 
 ## Quick Start
 
-### Install from PyPI (recommended for developers)
-
-```bash
-pip install fin123-core
-```
-
-Or install from source (editable / development mode):
+### Install from source (editable / development mode):
 
 ```bash
 git clone https://github.com/reckoning-machines/fin123-core.git
