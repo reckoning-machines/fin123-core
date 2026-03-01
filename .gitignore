@@ -9,3 +9,4 @@ build/
 .mypy_cache/
 *.spec.bak
 unified_diffs.md
+uniform_diff.md

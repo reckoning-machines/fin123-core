@@ -28,18 +28,18 @@ Modify your workbook through the browser UI or directly in `workbook.yaml`. The 
 
 ### Commit
 
-`fin123-core commit <dir>` (or Ctrl+S in the UI) writes the working copy to `workbook.yaml` and creates an immutable snapshot at `snapshots/workbook/vXXXX/workbook.yaml`. Versions are monotonic (v0001, v0002, ...).
+`fin123 commit <dir>` (or Ctrl+S in the UI) writes the working copy to `workbook.yaml` and creates an immutable snapshot at `snapshots/workbook/vXXXX/workbook.yaml`. Versions are monotonic (v0001, v0002, ...).
 
 ### Build
 
-`fin123-core build <dir>` (or Ctrl+Enter in the UI) evaluates the latest committed snapshot. Rejects if uncommitted edits exist. Produces an immutable run directory under `runs/` with:
+`fin123 build <dir>` (or Ctrl+Enter in the UI) evaluates the latest committed snapshot. Rejects if uncommitted edits exist. Produces an immutable run directory under `runs/` with:
 - `run_meta.json` — run_id, timestamp, workbook_spec_hash, input_hashes, effective_params, params_hash, engine_version, model_id, model_version_id.
 - `outputs/scalars.json` — evaluated scalar values.
 - `outputs/<table>.parquet` — materialized table outputs.
 
 ### Verify
 
-`fin123-core verify-build <run_id>` checks integrity: recomputes workbook spec hash, input file hashes, params hash, overlay hash, export hash. Detects any post-build tampering.
+`fin123 verify <run_id>` checks integrity: recomputes workbook spec hash, input file hashes, params hash, overlay hash, export hash. Detects any post-build tampering.
 
 ### Determinism Guarantees
 
@@ -123,7 +123,7 @@ On-demand memoized evaluator for sheet cell formulas:
 A local-only FastAPI server serving vanilla HTML/JS/CSS. No React, no build step, no third-party grid libraries.
 
 ```
-fin123-core ui <dir> → FastAPI server (localhost) → ProjectService → Workbook engine
+fin123 ui <dir> → FastAPI server (localhost) → ProjectService → Workbook engine
 ```
 
 ### ProjectService (`ui/service.py`)
@@ -238,9 +238,9 @@ fin123-core ships bundled project templates:
 ### Usage
 
 ```
-fin123-core new my_model --template single_company --set ticker=AAPL
-fin123-core template list
-fin123-core template show single_company
+fin123 init my_model --template single_company --set ticker=AAPL
+fin123 template list
+fin123 template show single_company
 ```
 
 Templates use `{{placeholder}}` substitution in YAML files. Binary files (`.parquet`) are copied verbatim. Each new project gets a fresh `model_id` UUID and an initial v0001 snapshot.
