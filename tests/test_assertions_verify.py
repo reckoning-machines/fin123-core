@@ -425,7 +425,7 @@ class TestVerifyBuildNoRun:
         assert result.exit_code == 2
         assert "no completed build run found" in result.output
         assert "Next steps:" in result.output
-        assert "fin123-core build" in result.output
+        assert "fin123 build" in result.output
 
     def test_no_run_json_includes_no_run_flag(self, project_dir):
         from click.testing import CliRunner
@@ -442,8 +442,8 @@ class TestVerifyBuildNoRun:
         )
         assert result.exit_code == 2
         output = json.loads(result.output)
-        assert output["status"] == "fail"
-        assert output["no_run"] is True
+        assert output["ok"] is False
+        assert output["data"]["no_run"] is True
 
 
 # ---------------------------------------------------------------------------
