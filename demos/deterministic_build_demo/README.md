@@ -3,7 +3,7 @@
 ## Command
 
 ```bash
-fin123-core demo deterministic-build
+fin123 demo deterministic-build
 ```
 
 ## Files produced
