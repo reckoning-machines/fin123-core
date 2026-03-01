@@ -154,6 +154,7 @@ Produces `dist/fin123_core-<version>.tar.gz` (sdist) and
 For database-backed registries, headless runner services, connectors (Bloomberg),
 plugin marketplace, workflow automation, and SQL sync, see
 [fin123-pod](https://github.com/reckoning-machines/fin123-pod) (private, requires license).
+Built by Reckoning Machines
 
 ## License
 
