@@ -146,7 +146,7 @@ Every command with `--json` prints exactly one JSON object to stdout:
 {
   "ok": true,
   "cmd": "doctor",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "data": { ... },
   "error": null
 }
@@ -199,6 +199,14 @@ fin123 demo data-guardrails
 ```
 
 No external data or configuration required.
+
+### Verify demos installed
+
+```bash
+pip install -e ".[dev]"
+python -c "import fin123.demos; print('ok')"
+fin123 demo --help
+```
 
 ## Project Layout
 

@@ -148,6 +148,14 @@ All demos produce deterministic output. Running the same demo twice on the
 same version of fin123 will produce identical results (no timestamps
 or run IDs appear in output that would cause hash drift).
 
+### Verify demos installed
+
+```bash
+pip install -e ".[dev]"
+python -c "import fin123.demos; print('ok')"
+fin123 demo --help
+```
+
 ### Running all demos as a test suite
 
 ```bash
@@ -306,12 +314,18 @@ python -c "import polars; print(polars.__version__)"
 
 ### Demo fails with `ModuleNotFoundError`
 
-Demos import from the `demos/` package at the repo root. Ensure you are
-running from a source checkout with the package installed in editable mode:
+Demos are bundled inside the `fin123` package at `fin123.demos`. Verify
+the package is installed correctly:
 
 ```bash
 pip install -e ".[dev]"
+python -c "import fin123.demos; print('ok')"
+fin123 demo --help
 ```
+
+If you see `ModuleNotFoundError: No module named 'demos'`, you may be
+running an older version that shipped demos as a top-level package.
+Upgrade to 0.3.4+ where demos are bundled as `fin123.demos`.
 
 ### verify reports FAIL unexpectedly
 

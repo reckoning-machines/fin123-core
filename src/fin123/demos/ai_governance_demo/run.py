@@ -16,7 +16,7 @@ from typing import Any
 
 import yaml
 
-from demos.ai_governance_demo.plugin_validator import validate_plugin_or_raise
+from fin123.demos.ai_governance_demo.plugin_validator import validate_plugin_or_raise
 
 _DEMO_DIR = Path(__file__).parent
 

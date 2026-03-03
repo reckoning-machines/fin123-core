@@ -1002,7 +1002,7 @@ def demo() -> None:
 @demo.command("ai-governance")
 def demo_ai_governance() -> None:
     """Demo 1: AI governance -- plugin validation + compliance report."""
-    from demos.ai_governance_demo.run import run_demo
+    from fin123.demos.ai_governance_demo.run import run_demo
 
     run_demo()
 
@@ -1010,7 +1010,7 @@ def demo_ai_governance() -> None:
 @demo.command("deterministic-build")
 def demo_deterministic_build() -> None:
     """Demo 2: Deterministic build -- scaffold, build, verify with stable hashes."""
-    from demos.deterministic_build_demo.run import run_demo
+    from fin123.demos.deterministic_build_demo.run import run_demo
 
     run_demo()
 
@@ -1018,7 +1018,7 @@ def demo_deterministic_build() -> None:
 @demo.command("batch-sweep")
 def demo_batch_sweep() -> None:
     """Demo 3: Batch sweep -- 3-scenario parameter grid with stable manifest."""
-    from demos.batch_sweep_demo.run import run_demo
+    from fin123.demos.batch_sweep_demo.run import run_demo
 
     run_demo()
 
@@ -1026,7 +1026,7 @@ def demo_batch_sweep() -> None:
 @demo.command("data-guardrails")
 def demo_data_guardrails() -> None:
     """Demo 4: Data guardrails -- join validation failures + success."""
-    from demos.data_guardrails_demo.run import run_demo
+    from fin123.demos.data_guardrails_demo.run import run_demo
 
     run_demo()
 

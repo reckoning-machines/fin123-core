@@ -109,7 +109,7 @@ to stdout:
 {
   "ok": true,
   "cmd": "doctor",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "data": { ... },
   "error": null
 }
@@ -171,7 +171,7 @@ evaluated and included in the overall result.
 {
   "ok": true,
   "cmd": "doctor",
-  "version": "0.3.2",
+  "version": "0.3.4",
   "data": {
     "checks": [
       {

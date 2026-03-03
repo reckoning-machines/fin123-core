@@ -11,7 +11,7 @@ class TestDeterministicBuildDemo:
 
     def test_output_no_run_id(self, tmp_path: Path, capsys: ...) -> None:
         """Console output does not contain run_id or 'Build saved to'."""
-        from demos.deterministic_build_demo.run import run_demo
+        from fin123.demos.deterministic_build_demo.run import run_demo
 
         run_demo(output_dir=tmp_path)
         captured = capsys.readouterr().out
@@ -20,7 +20,7 @@ class TestDeterministicBuildDemo:
 
     def test_summary_no_timestamps(self, tmp_path: Path) -> None:
         """Summary JSON contains no timestamps or run_ids."""
-        from demos.deterministic_build_demo.run import run_demo
+        from fin123.demos.deterministic_build_demo.run import run_demo
 
         run_demo(output_dir=tmp_path)
         text = (tmp_path / "deterministic_build_summary.json").read_text()
@@ -30,7 +30,7 @@ class TestDeterministicBuildDemo:
 
     def test_summary_stable_across_runs(self, tmp_path: Path) -> None:
         """Summary JSON is byte-for-byte identical across two runs."""
-        from demos.deterministic_build_demo.run import run_demo
+        from fin123.demos.deterministic_build_demo.run import run_demo
 
         out1 = tmp_path / "r1"
         out1.mkdir()
@@ -50,7 +50,7 @@ class TestBatchSweepDemo:
 
     def test_all_export_hashes_distinct(self, tmp_path: Path) -> None:
         """The three scenarios produce distinct export hashes."""
-        from demos.batch_sweep_demo.run import run_demo
+        from fin123.demos.batch_sweep_demo.run import run_demo
 
         manifest = run_demo(output_dir=tmp_path)
         hashes = [s["export_hash"] for s in manifest["scenarios"]]
@@ -58,7 +58,7 @@ class TestBatchSweepDemo:
 
     def test_manifest_stable_across_runs(self, tmp_path: Path) -> None:
         """Manifest JSON is byte-for-byte identical across two runs."""
-        from demos.batch_sweep_demo.run import run_demo
+        from fin123.demos.batch_sweep_demo.run import run_demo
 
         out1 = tmp_path / "r1"
         out1.mkdir()
@@ -78,7 +78,7 @@ class TestDataGuardrailsDemo:
 
     def test_failure_and_success_stable(self, tmp_path: Path) -> None:
         """Both failure and success JSON outputs are stable across two runs."""
-        from demos.data_guardrails_demo.run import run_demo
+        from fin123.demos.data_guardrails_demo.run import run_demo
 
         out1 = tmp_path / "r1"
         out1.mkdir()
@@ -97,7 +97,7 @@ class TestDataGuardrailsDemo:
 
     def test_failure_has_expected_structure(self, tmp_path: Path) -> None:
         """Failure JSON has the expected error structure."""
-        from demos.data_guardrails_demo.run import run_demo
+        from fin123.demos.data_guardrails_demo.run import run_demo
 
         result = run_demo(output_dir=tmp_path)
         failure = result["failure"]
@@ -107,7 +107,7 @@ class TestDataGuardrailsDemo:
 
     def test_success_has_export_hash(self, tmp_path: Path) -> None:
         """Success JSON has a non-empty export hash."""
-        from demos.data_guardrails_demo.run import run_demo
+        from fin123.demos.data_guardrails_demo.run import run_demo
 
         result = run_demo(output_dir=tmp_path)
         success = result["success"]

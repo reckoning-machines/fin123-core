@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.4] — 2026-03-03
+
+### Fixed
+
+- **Bundled demos as `fin123.demos`** — demos are now packaged inside the
+  `fin123` package (`src/fin123/demos/`) so `fin123 demo <name>` works in
+  installed environments without a source checkout. Resolves
+  `ModuleNotFoundError: No module named 'demos'`.
+
 ## [0.3.3] — 2026-03-01
 
 ### Added

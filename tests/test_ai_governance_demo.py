@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from demos.ai_governance_demo.run import compute_deterministic_hash, run_demo
+from fin123.demos.ai_governance_demo.run import compute_deterministic_hash, run_demo
 
 
 class TestAIGovernanceDemo:
