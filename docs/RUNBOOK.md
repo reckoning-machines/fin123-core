@@ -423,12 +423,18 @@ python scripts/checksums.py
 
 ### Automated (recommended)
 
-Push a tag matching `core-vX.Y.Z` to trigger CI:
+Push a tag matching `core-vX.Y.Z` (or `vX.Y.Z`) to trigger CI:
 
 ```bash
 git tag core-vX.Y.Z
 git push origin core-vX.Y.Z
 ```
+
+> **Warning:** Tag pushes matching `v*` or `core-v*` will attempt PyPI
+> publish via Trusted Publishing (OIDC). The publish job will fail until
+> Trusted Publishing is configured on PyPI for this repo. Do not push
+> release tags until that one-time setup is complete (see "PyPI Trusted
+> Publishing Failure" below).
 
 This triggers two workflows:
 
@@ -631,7 +637,7 @@ pod development. Do not install both into the same environment.
 
 | Element | Format | Example |
 |---------|--------|---------|
-| Git tag | `core-vX.Y.Z` | `core-v0.3.0` |
+| Git tag | `core-vX.Y.Z` or `vX.Y.Z` | `core-v0.3.0` |
 | pyproject.toml version | `X.Y.Z` | `0.3.0` |
 | `core_api` version | integer | `1` |
 
