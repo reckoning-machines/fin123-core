@@ -76,7 +76,7 @@ def _make_compiled_artifact(path: Path, **overrides) -> Path:
 
 @pytest.fixture
 def runner() -> CliRunner:
-    return CliRunner(mix_stderr=False)
+    return CliRunner()
 
 
 @pytest.fixture
