@@ -2507,6 +2507,74 @@ class ProjectService:
 
         return "fresh"
 
+    # ------------------------------------------------------------------
+    # Worksheet integration
+    # ------------------------------------------------------------------
+
+    def list_worksheet_specs(self) -> list[dict[str, Any]]:
+        """List worksheet spec files in <project>/worksheets/.
+
+        Returns list of {file, name, title, columns} dicts.
+        Invalid specs are included with name='?' so the UI can show them.
+        """
+        ws_dir = self.project_dir / "worksheets"
+        if not ws_dir.exists():
+            return []
+
+        specs: list[dict[str, Any]] = []
+        for f in sorted(ws_dir.glob("*.yaml")):
+            try:
+                from fin123.worksheet.spec import load_worksheet_view
+
+                spec = load_worksheet_view(f)
+                specs.append({
+                    "file": str(f.relative_to(self.project_dir)),
+                    "name": spec.name,
+                    "title": spec.title or "",
+                    "columns": len(spec.columns),
+                })
+            except Exception:
+                specs.append({
+                    "file": str(f.relative_to(self.project_dir)),
+                    "name": "?",
+                    "title": "(invalid spec)",
+                    "columns": 0,
+                })
+        return specs
+
+    def compile_worksheet_from_run(
+        self,
+        spec_file: str,
+        table_name: str,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Compile a worksheet on demand from a spec file and run table.
+
+        Args:
+            spec_file: Relative path to the YAML spec (e.g. 'worksheets/margin.yaml').
+            table_name: Table name from the run outputs.
+            run_id: Specific run id, or None for latest.
+
+        Returns:
+            The CompiledWorksheet as a JSON-serializable dict.
+
+        Raises:
+            FileNotFoundError: If spec, run, or table not found.
+            ValueError: On compilation errors.
+        """
+        from fin123.worksheet.compiler import compile_worksheet
+        from fin123.worksheet.spec import load_worksheet_view
+        from fin123.worksheet.view_table import from_fin123_run
+
+        spec_path = self.project_dir / spec_file
+        if not spec_path.exists():
+            raise FileNotFoundError(f"Worksheet spec not found: {spec_file}")
+
+        spec = load_worksheet_view(spec_path)
+        vt = from_fin123_run(self.project_dir, table_name, run_id=run_id)
+        ws = compile_worksheet(vt, spec)
+        return json.loads(ws.to_json())
+
     def _resolve_run_dir(self, run_id: str | None) -> Path | None:
         """Resolve a run directory by id, defaulting to latest."""
         runs_dir = self.project_dir / "runs"

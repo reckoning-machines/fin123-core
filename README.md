@@ -15,6 +15,7 @@ It runs entirely on your machine -- no database, no server, no account required.
 - **XLSX import** -- Best-effort import of Excel workbooks with formula classification.
 - **Templates** -- Pre-built starting points for common financial model patterns.
 - **Offline-first** -- `fin123 build` reads only local files. Zero network calls.
+- **Worksheet runtime** -- Deterministic projections of build output tables with derived columns, sorts, flags, and compiled artifacts.
 - **Doctor** -- Deterministic preflight validation (`fin123 doctor`).
 
 ## Quick Start
@@ -72,6 +73,7 @@ Opens a local spreadsheet editor at `http://localhost:<port>` with:
 - Commit (Ctrl+S), Build (Ctrl+Enter), dependency highlight (Ctrl+P).
 - XLSX import via Ctrl+O or `fin123 import-xlsx model.xlsx my_model`.
 - Version browsing -- select any historical snapshot (read-only).
+- Worksheet viewer -- compile and view worksheet specs against build outputs.
 
 ## CLI Commands
 
@@ -101,6 +103,10 @@ The CLI executable is `fin123` in both core and pod.
 | `fin123 template list` | List available templates |
 | `fin123 events <dir>` | Show structured event log |
 | `fin123 ui <dir>` | Launch the browser UI |
+| `fin123 worksheet compile <spec>` | Compile a worksheet from spec + build table |
+| `fin123 worksheet verify <file>` | Verify compiled worksheet artifact integrity |
+| `fin123 worksheet diff <a> <b>` | Structural diff of two compiled worksheets |
+| `fin123 worksheet list` | List worksheet specs in project |
 | `fin123 demo <name>` | Run a built-in demo |
 
 ### Enterprise commands (require fin123-pod)
@@ -146,7 +152,7 @@ Every command with `--json` prints exactly one JSON object to stdout:
 {
   "ok": true,
   "cmd": "doctor",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "data": { ... },
   "error": null
 }
@@ -226,6 +232,7 @@ my_model/
 - [ARCHITECTURE.md](ARCHITECTURE.md) -- Core architecture: two-graph model, formula engine, UI, storage, determinism.
 - [docs/CLI_SPEC.md](docs/CLI_SPEC.md) -- CLI specification: command tree, exit codes, JSON contract, doctor checks.
 - [POD_BOUNDARY.md](POD_BOUNDARY.md) -- What the enterprise Pod layer adds and how it extends Core.
+- [docs/worksheets.md](docs/worksheets.md) -- Worksheet runtime: ViewTable, WorksheetView, CompiledWorksheet, CLI, expression language.
 - [docs/formulas_and_views.md](docs/formulas_and_views.md) -- Formula semantics, Excel compatibility, unsupported functions, view sort/filter.
 - [docs/RUNBOOK.md](docs/RUNBOOK.md) -- Operational runbook: install, usage, troubleshooting, and release process.
 - [CHANGELOG.md](CHANGELOG.md) -- Release notes.
@@ -236,6 +243,24 @@ For database-backed registries, headless runner services, connectors (Bloomberg)
 plugin marketplace, workflow automation, and SQL sync, see
 [fin123-pod](https://github.com/reckoning-machines/fin123-pod) (private, requires license).
 Built by Reckoning Machines
+
+## What is safe to add next
+
+Potential near-term improvements. Not commitments.
+
+1. **`suggest_schema()` CLI helper** — for external data adapters. Inspects a
+   parquet or CSV file and emits a draft column schema for use in worksheet
+   specs.
+
+2. **Small renderer polish** — column alignment improvements, truncation
+   handling for long cell values, copy cell text, minor CSS refinements.
+
+3. **Provenance expand panel improvements** — better layout and
+   readability in the worksheet viewer provenance disclosure. UI only, no
+   runtime change.
+
+4. **Worksheet diff visualization** — the `worksheet diff` CLI command
+   exists; the local UI could render differences inline.
 
 ## License
 

@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>fin123</title>
   <link rel="stylesheet" href="/static/styles.css">
+  <link rel="stylesheet" href="/static/worksheet_viewer.css">
 </head>
 <body>
 <div id="app">
@@ -123,6 +124,7 @@
           <div class="tab" data-tab="health">Health</div>
           <div class="tab" data-tab="logs">Logs</div>
           <div class="tab" data-tab="checks">Incidents</div>
+          <div class="tab" data-tab="worksheet">Worksheet</div>
           <div class="tab" data-tab="registry">Reg</div>
         </div>
         <div id="tab-scalars" class="tab-content active" style="overflow-y:auto;flex:1;">
@@ -179,6 +181,20 @@
           <div style="padding:6px 0;">
             <button class="btn" id="btn-run-verify">Run Verify</button>
           </div>
+        </div>
+        <div id="tab-worksheet" class="tab-content" style="overflow-y:auto;flex:1;">
+          <div class="ws-controls" style="padding:6px 0;display:flex;flex-direction:column;gap:4px;">
+            <label style="font-size:10px;color:var(--fg-dim);">Spec</label>
+            <select id="ws-spec-select" style="background:var(--bg-input);color:var(--fg);border:1px solid var(--border);border-radius:3px;padding:2px 4px;font-family:var(--font);font-size:11px;outline:none;">
+              <option value="">(no specs)</option>
+            </select>
+            <label style="font-size:10px;color:var(--fg-dim);">Table</label>
+            <select id="ws-table-select" style="background:var(--bg-input);color:var(--fg);border:1px solid var(--border);border-radius:3px;padding:2px 4px;font-family:var(--font);font-size:11px;outline:none;">
+              <option value="">(no tables)</option>
+            </select>
+            <button class="btn" id="btn-ws-compile" style="margin-top:4px;">Compile</button>
+          </div>
+          <div id="ws-viewer-mount" style="margin-top:6px;"></div>
         </div>
         <div id="tab-registry" class="tab-content" style="overflow-y:auto;flex:1;">
           <div id="registry-status"></div>
@@ -272,6 +288,7 @@
   </div>
 
 </div>
+<script src="/static/worksheet_viewer.js"></script>
 <script src="/static/app.js"></script>
 </body>
 </html>

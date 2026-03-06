@@ -186,6 +186,12 @@ class ColDeleteRequest(BaseModel):
     count: int = 1
 
 
+class WorksheetCompileRequest(BaseModel):
+    spec_file: str
+    table_name: str
+    run_id: str | None = None
+
+
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
@@ -746,5 +752,24 @@ def _api_router():
         if "error" in result:
             raise HTTPException(400, result["error"])
         return result
+
+    # -- Worksheet integration --
+
+    @router.get("/worksheet/specs")
+    async def list_worksheet_specs() -> list[dict[str, Any]]:
+        return _svc().list_worksheet_specs()
+
+    @router.post("/worksheet/compile")
+    async def compile_worksheet(req: WorksheetCompileRequest) -> dict[str, Any]:
+        try:
+            return _svc().compile_worksheet_from_run(
+                spec_file=req.spec_file,
+                table_name=req.table_name,
+                run_id=req.run_id,
+            )
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc))
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
 
     return router

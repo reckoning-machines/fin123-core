@@ -1291,5 +1291,379 @@ def contract_cmd(ctx: click.Context) -> None:
     click.echo(json.dumps(contract, indent=2, sort_keys=True))
 
 
+# ---------------------------------------------------------------------------
+# Worksheet commands
+# ---------------------------------------------------------------------------
+
+
+@main.group()
+def worksheet() -> None:
+    """Worksheet compilation and inspection.
+
+    Examples:
+
+      fin123 worksheet compile spec.yaml --table priced_estimates
+      fin123 worksheet verify compiled.json
+      fin123 worksheet diff a.json b.json
+      fin123 worksheet list --project my_model
+    """
+
+
+@worksheet.command("compile")
+@click.argument("spec_path", type=click.Path(exists=True))
+@click.option("--table", "table_name", required=True, help="Table name from the build run.")
+@click.option("--project", "directory", default=".", type=click.Path(exists=True), help="Project directory.")
+@click.option("--run", "run_id", default=None, help="Specific run ID (default: latest).")
+@click.option("--output", "-o", "output_path", default=None, type=click.Path(), help="Output JSON path (default: stdout with --json, else <name>.worksheet.json).")
+@click.pass_context
+def worksheet_compile(
+    ctx: click.Context,
+    spec_path: str,
+    table_name: str,
+    directory: str,
+    run_id: str | None,
+    output_path: str | None,
+) -> None:
+    """Compile a worksheet from a spec and a build run's table.
+
+    Examples:
+
+      fin123 worksheet compile worksheets/margin.yaml --table priced_estimates
+      fin123 worksheet compile spec.yaml --table t --output out.json
+      fin123 --json worksheet compile spec.yaml --table t
+    """
+    from fin123.worksheet.compiler import compile_worksheet
+    from fin123.worksheet.spec import load_worksheet_view
+    from fin123.worksheet.view_table import from_fin123_run
+
+    try:
+        spec = load_worksheet_view(spec_path)
+    except Exception as exc:
+        if ctx.obj.get("json"):
+            click.echo(_json_out(False, "worksheet compile", error={"code": EXIT_ERROR, "message": f"Invalid spec: {exc}"}))
+        else:
+            _emit_err(ctx, f"Error loading spec: {exc}")
+        sys.exit(EXIT_ERROR)
+
+    try:
+        vt = from_fin123_run(Path(directory), table_name, run_id=run_id)
+    except FileNotFoundError as exc:
+        if ctx.obj.get("json"):
+            click.echo(_json_out(False, "worksheet compile", error={"code": EXIT_ERROR, "message": str(exc)}))
+        else:
+            _emit_err(ctx, str(exc))
+        sys.exit(EXIT_ERROR)
+
+    try:
+        ws = compile_worksheet(vt, spec)
+    except ValueError as exc:
+        if ctx.obj.get("json"):
+            click.echo(_json_out(False, "worksheet compile", error={"code": EXIT_ERROR, "message": str(exc)}))
+        else:
+            _emit_err(ctx, f"Compilation failed: {exc}")
+        sys.exit(EXIT_ERROR)
+
+    artifact_json = ws.to_json()
+
+    if ctx.obj.get("json"):
+        # JSON mode: emit the standard envelope with the artifact as data
+        click.echo(_json_out(True, "worksheet compile", data={
+            "name": ws.name,
+            "row_count": ws.provenance.row_count,
+            "column_count": ws.provenance.column_count,
+            "error_count": ws.error_summary.total_errors if ws.error_summary else 0,
+            "output_path": output_path,
+        }))
+        if output_path:
+            Path(output_path).write_text(artifact_json)
+    elif output_path:
+        Path(output_path).write_text(artifact_json)
+        _emit(ctx, f"Compiled {ws.name}: {ws.provenance.row_count} rows, {ws.provenance.column_count} columns → {output_path}")
+    else:
+        # Default: write to <name>.worksheet.json in project dir
+        default_path = Path(directory) / f"{ws.name}.worksheet.json"
+        default_path.write_text(artifact_json)
+        _emit(ctx, f"Compiled {ws.name}: {ws.provenance.row_count} rows, {ws.provenance.column_count} columns → {default_path}")
+
+
+@worksheet.command("verify")
+@click.argument("artifact_path", type=click.Path(exists=True))
+@click.pass_context
+def worksheet_verify(ctx: click.Context, artifact_path: str) -> None:
+    """Verify a compiled worksheet artifact's integrity.
+
+    Checks:
+    - JSON is valid and parses to a CompiledWorksheet
+    - Provenance is present and complete
+    - Content round-trips cleanly (content hash matches)
+
+    Examples:
+
+      fin123 worksheet verify compiled.worksheet.json
+    """
+    from fin123.worksheet.compiled import CompiledWorksheet
+
+    path = Path(artifact_path)
+    checks: list[dict[str, str]] = []
+    failures: list[str] = []
+
+    # 1. Parse
+    try:
+        raw_text = path.read_text()
+        ws = CompiledWorksheet.from_json(raw_text)
+        checks.append({"check": "parse", "status": "pass"})
+    except Exception as exc:
+        checks.append({"check": "parse", "status": "fail", "message": str(exc)})
+        failures.append(f"Parse failed: {exc}")
+        _report_verify(ctx, path.name, checks, failures)
+        sys.exit(EXIT_VERIFY_FAIL)
+
+    # 2. Provenance present
+    if ws.provenance and ws.provenance.fin123_version:
+        checks.append({"check": "provenance", "status": "pass"})
+    else:
+        checks.append({"check": "provenance", "status": "fail", "message": "Missing provenance"})
+        failures.append("Missing or incomplete provenance")
+
+    # 3. Column count consistent
+    if ws.provenance.column_count == len(ws.columns):
+        checks.append({"check": "column_count", "status": "pass"})
+    else:
+        msg = f"Provenance says {ws.provenance.column_count} columns, artifact has {len(ws.columns)}"
+        checks.append({"check": "column_count", "status": "fail", "message": msg})
+        failures.append(msg)
+
+    # 4. Row count consistent
+    if ws.provenance.row_count == len(ws.rows):
+        checks.append({"check": "row_count", "status": "pass"})
+    else:
+        msg = f"Provenance says {ws.provenance.row_count} rows, artifact has {len(ws.rows)}"
+        checks.append({"check": "row_count", "status": "fail", "message": msg})
+        failures.append(msg)
+
+    # 5. Content roundtrip: re-serialize and compare content hash
+    try:
+        roundtripped = CompiledWorksheet.from_json(ws.to_json())
+        if ws.content_hash_data() == roundtripped.content_hash_data():
+            checks.append({"check": "content_roundtrip", "status": "pass"})
+        else:
+            checks.append({"check": "content_roundtrip", "status": "fail", "message": "Content hash mismatch after roundtrip"})
+            failures.append("Content hash mismatch after roundtrip")
+    except Exception as exc:
+        checks.append({"check": "content_roundtrip", "status": "fail", "message": str(exc)})
+        failures.append(f"Roundtrip failed: {exc}")
+
+    _report_verify(ctx, path.name, checks, failures)
+    if failures:
+        sys.exit(EXIT_VERIFY_FAIL)
+
+
+def _report_verify(
+    ctx: click.Context,
+    name: str,
+    checks: list[dict[str, str]],
+    failures: list[str],
+) -> None:
+    status = "fail" if failures else "pass"
+    if ctx.obj.get("json"):
+        click.echo(_json_out(
+            not failures,
+            "worksheet verify",
+            data={"artifact": name, "status": status, "checks": checks},
+            error={"code": EXIT_VERIFY_FAIL, "message": "; ".join(failures)} if failures else None,
+        ))
+    else:
+        _emit(ctx, f"Verify worksheet: {name}")
+        _emit(ctx, f"Status: {status.upper()}")
+        for c in checks:
+            mark = "✓" if c["status"] == "pass" else "✗"
+            line = f"  {mark} {c['check']}"
+            if c.get("message"):
+                line += f" — {c['message']}"
+            _emit(ctx, line)
+
+
+@worksheet.command("diff")
+@click.argument("left", type=click.Path(exists=True))
+@click.argument("right", type=click.Path(exists=True))
+@click.pass_context
+def worksheet_diff(ctx: click.Context, left: str, right: str) -> None:
+    """Compare two compiled worksheet artifacts.
+
+    Structural comparison: columns, sorts, row counts, data changes.
+    Diff quality depends on row identity — positional if no shared row_key.
+
+    Examples:
+
+      fin123 worksheet diff v1.worksheet.json v2.worksheet.json
+    """
+    from fin123.worksheet.compiled import CompiledWorksheet
+
+    try:
+        ws_left = CompiledWorksheet.from_file(left)
+        ws_right = CompiledWorksheet.from_file(right)
+    except Exception as exc:
+        if ctx.obj.get("json"):
+            click.echo(_json_out(False, "worksheet diff", error={"code": EXIT_ERROR, "message": str(exc)}))
+        else:
+            _emit_err(ctx, f"Error reading artifacts: {exc}")
+        sys.exit(EXIT_ERROR)
+
+    result = _compute_worksheet_diff(ws_left, ws_right)
+
+    if ctx.obj.get("json"):
+        click.echo(_json_out(True, "worksheet diff", data=result))
+    else:
+        _emit(ctx, _format_worksheet_diff(result, left, right))
+
+
+def _compute_worksheet_diff(left, right) -> dict:
+    """Compute a structural diff between two compiled worksheets."""
+    diff: dict[str, Any] = {
+        "identity_mode": "row_key" if (left.provenance.view_table.row_key and right.provenance.view_table.row_key) else "positional",
+        "left_name": left.name,
+        "right_name": right.name,
+    }
+
+    # Column changes
+    left_cols = [c.name for c in left.columns]
+    right_cols = [c.name for c in right.columns]
+    diff["columns_added"] = [c for c in right_cols if c not in set(left_cols)]
+    diff["columns_removed"] = [c for c in left_cols if c not in set(right_cols)]
+
+    # Row counts
+    diff["left_row_count"] = len(left.rows)
+    diff["right_row_count"] = len(right.rows)
+
+    # Sort changes
+    left_sorts = [(s.column, s.descending) for s in left.sorts]
+    right_sorts = [(s.column, s.descending) for s in right.sorts]
+    diff["sorts_changed"] = left_sorts != right_sorts
+
+    # Error counts
+    diff["left_error_count"] = left.error_summary.total_errors if left.error_summary else 0
+    diff["right_error_count"] = right.error_summary.total_errors if right.error_summary else 0
+
+    # Data diff — compare shared columns, row by row
+    shared_cols = [c for c in left_cols if c in set(right_cols)]
+    row_key_col = None
+    if diff["identity_mode"] == "row_key":
+        lk = left.provenance.view_table.row_key
+        rk = right.provenance.view_table.row_key
+        if lk == rk and lk in set(shared_cols):
+            row_key_col = lk
+
+    changed_cells = 0
+    changed_rows = 0
+    n = min(len(left.rows), len(right.rows))
+
+    if row_key_col:
+        # Key-based matching
+        right_by_key = {r[row_key_col]: r for r in right.rows}
+        for l_row in left.rows:
+            key = l_row.get(row_key_col)
+            r_row = right_by_key.get(key)
+            if r_row is None:
+                continue
+            row_changed = False
+            for col in shared_cols:
+                if l_row.get(col) != r_row.get(col):
+                    changed_cells += 1
+                    row_changed = True
+            if row_changed:
+                changed_rows += 1
+    else:
+        # Positional matching
+        for i in range(n):
+            row_changed = False
+            for col in shared_cols:
+                if left.rows[i].get(col) != right.rows[i].get(col):
+                    changed_cells += 1
+                    row_changed = True
+            if row_changed:
+                changed_rows += 1
+
+    diff["changed_rows"] = changed_rows
+    diff["changed_cells"] = changed_cells
+    diff["content_identical"] = left.content_hash_data() == right.content_hash_data()
+
+    return diff
+
+
+def _format_worksheet_diff(diff: dict, left_path: str, right_path: str) -> str:
+    """Format a diff result for human display."""
+    lines = [
+        f"Worksheet diff: {left_path} ↔ {right_path}",
+        f"Identity mode: {diff['identity_mode']}",
+    ]
+
+    if diff["content_identical"]:
+        lines.append("Result: IDENTICAL (content hash match)")
+        return "\n".join(lines)
+
+    lines.append(f"Rows: {diff['left_row_count']} → {diff['right_row_count']}")
+
+    if diff["columns_added"]:
+        lines.append(f"Columns added: {diff['columns_added']}")
+    if diff["columns_removed"]:
+        lines.append(f"Columns removed: {diff['columns_removed']}")
+    if diff["sorts_changed"]:
+        lines.append("Sort spec: changed")
+    if diff["left_error_count"] != diff["right_error_count"]:
+        lines.append(f"Errors: {diff['left_error_count']} → {diff['right_error_count']}")
+
+    lines.append(f"Changed: {diff['changed_rows']} rows, {diff['changed_cells']} cells")
+
+    return "\n".join(lines)
+
+
+@worksheet.command("list")
+@click.option("--project", "directory", default=".", type=click.Path(exists=True), help="Project directory.")
+@click.pass_context
+def worksheet_list(ctx: click.Context, directory: str) -> None:
+    """List worksheet spec files in the project.
+
+    Looks for YAML files in <project>/worksheets/.
+
+    Examples:
+
+      fin123 worksheet list
+      fin123 worksheet list --project my_model
+    """
+    ws_dir = Path(directory) / "worksheets"
+
+    if not ws_dir.exists():
+        specs: list[dict[str, str]] = []
+    else:
+        specs = []
+        for f in sorted(ws_dir.glob("*.yaml")):
+            try:
+                from fin123.worksheet.spec import load_worksheet_view
+                spec = load_worksheet_view(f)
+                specs.append({
+                    "file": str(f.relative_to(directory)),
+                    "name": spec.name,
+                    "title": spec.title or "",
+                    "columns": len(spec.columns),
+                })
+            except Exception:
+                specs.append({
+                    "file": str(f.relative_to(directory)),
+                    "name": "?",
+                    "title": "(invalid spec)",
+                    "columns": 0,
+                })
+
+    if ctx.obj.get("json"):
+        click.echo(_json_out(True, "worksheet list", data={"specs": specs}))
+    else:
+        if not specs:
+            _emit(ctx, f"No worksheet specs found in {ws_dir}/")
+        else:
+            _emit(ctx, f"Worksheet specs ({len(specs)}):")
+            for s in specs:
+                _emit(ctx, f"  {s['file']}  name={s['name']}  columns={s['columns']}")
+
+
 if __name__ == "__main__":
     main()

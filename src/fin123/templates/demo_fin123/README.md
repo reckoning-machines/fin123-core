@@ -29,6 +29,26 @@ fin123 diff run <run_id_1> <run_id_2>
 fin123 release build <run_id>
 ```
 
+## Worksheets
+
+The template includes a worksheet spec at `worksheets/valuation_review.yaml`
+that projects the `priced_estimates` build output into a valuation review.
+
+```bash
+# List available worksheet specs
+fin123 worksheet list --project /tmp/demo
+
+# Compile the worksheet against the latest build
+fin123 worksheet compile worksheets/valuation_review.yaml \
+  --table priced_estimates --project /tmp/demo
+
+# Verify the compiled artifact
+fin123 worksheet verify valuation_review.worksheet.json
+
+# Or use the local UI: launch with `fin123 ui /tmp/demo` and
+# click the Worksheet tab.
+```
+
 ## Intentional failure
 
 The `scenario_fail` workflow sets `discount_rate=0.95`, which violates the

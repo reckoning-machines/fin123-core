@@ -1250,6 +1250,10 @@ document.querySelectorAll(".tab-bar .tab").forEach(tab => {
     if (tab.dataset.tab === "checks") {
       loadIncidents();
     }
+    // Load worksheet specs when switching to worksheet tab
+    if (tab.dataset.tab === "worksheet") {
+      loadWorksheetSpecs();
+    }
   });
 });
 
@@ -2633,6 +2637,86 @@ window.addEventListener("keydown", e => {
 // Click on overlay background closes it
 kbOverlay.addEventListener("click", e => {
   if (e.target === kbOverlay) toggleKbOverlay();
+});
+
+// ── Worksheet tab ──
+
+let _wsSpecsLoaded = false;
+
+async function loadWorksheetSpecs() {
+  const specSel = document.getElementById("ws-spec-select");
+  const tableSel = document.getElementById("ws-table-select");
+  if (!specSel || !tableSel) return;
+
+  // Populate table selector from already-loaded output tables
+  tableSel.innerHTML = "";
+  if (S.outputTables && S.outputTables.length > 0) {
+    for (const t of S.outputTables) {
+      const opt = document.createElement("option");
+      opt.value = t;
+      opt.textContent = t;
+      tableSel.appendChild(opt);
+    }
+  } else {
+    const opt = document.createElement("option");
+    opt.value = "";
+    opt.textContent = "(no tables)";
+    tableSel.appendChild(opt);
+  }
+
+  // Load specs (only on first visit or if not yet loaded)
+  if (_wsSpecsLoaded) return;
+  try {
+    const specs = await api("GET", "/worksheet/specs");
+    specSel.innerHTML = "";
+    if (specs.length === 0) {
+      const opt = document.createElement("option");
+      opt.value = "";
+      opt.textContent = "(no specs)";
+      specSel.appendChild(opt);
+    } else {
+      for (const s of specs) {
+        const opt = document.createElement("option");
+        opt.value = s.file;
+        opt.textContent = s.name + (s.title ? " — " + s.title : "");
+        specSel.appendChild(opt);
+      }
+    }
+    _wsSpecsLoaded = true;
+  } catch (err) {
+    log("Worksheet specs: " + err.message, "error");
+  }
+}
+
+document.getElementById("btn-ws-compile").addEventListener("click", async () => {
+  const specFile = document.getElementById("ws-spec-select").value;
+  const tableName = document.getElementById("ws-table-select").value;
+  const mount = document.getElementById("ws-viewer-mount");
+
+  if (!specFile || !tableName) {
+    log("Select a spec and table first", "error");
+    return;
+  }
+
+  mount.innerHTML = '<div style="color:var(--fg-dim);padding:8px;">Compiling...</div>';
+
+  try {
+    const result = await api("POST", "/worksheet/compile", {
+      spec_file: specFile,
+      table_name: tableName,
+    });
+    if (window.WorksheetViewer) {
+      WorksheetViewer.render(mount, result);
+    } else {
+      mount.innerHTML = '<pre style="font-size:10px;overflow:auto;max-height:400px;">' +
+        JSON.stringify(result, null, 2).replace(/</g, "&lt;") + '</pre>';
+    }
+    log("Worksheet compiled", "success");
+  } catch (err) {
+    mount.innerHTML = '<div style="color:var(--error);padding:8px;">' +
+      err.message.replace(/</g, "&lt;") + '</div>';
+    log("Worksheet compile error", "error");
+  }
 });
 
 // ── Init ──

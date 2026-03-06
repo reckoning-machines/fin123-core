@@ -263,7 +263,64 @@ These features are available via [fin123-pod](https://github.com/reckoningmachin
 
 ---
 
-## 8. Compatibility and Extension Points
+## 8. Worksheet Runtime
+
+Deterministic, read-only projections of build outputs. A worksheet takes a
+table from a completed build run, applies derived columns, sorts, and flags,
+and produces an immutable compiled artifact.
+
+Lineage: Lotus 1-2-3 deterministic worksheet, not BI dashboard.
+
+### Three Primitives
+
+| Primitive | Role |
+|-----------|------|
+| **ViewTable** | Typed, immutable tabular substrate wrapping a Polars DataFrame with an explicit column schema. Constructed from build run parquet outputs. |
+| **WorksheetView** | Declarative YAML spec describing columns (source or derived), sorts, flags, header groups, and display formats. Lives in `<project>/worksheets/`. |
+| **CompiledWorksheet** | Immutable row-oriented JSON artifact with structured provenance, inline error objects, and deterministic `content_hash_data()`. |
+
+### Derived Expression Evaluation
+
+Derived columns and flags use a restricted subset of the formula engine
+(row-local only). Allowed functions: `IF`, `IFERROR`, `ISERROR`, `AND`,
+`OR`, `NOT`, `SUM`, `AVERAGE`, `MIN`, `MAX`, `ABS`, `ROUND`, `DATE`,
+`YEAR`, `MONTH`, `DAY`, `EOMONTH`. Cell references, range references,
+`VLOOKUP`, `SUMIFS`, `PARAM`, and all cross-row operations are rejected
+at validation time.
+
+The compiler builds a dependency graph of derived columns and evaluates
+in topological order. Cycles are a hard compile error. Display order
+always matches the spec's column order.
+
+### CLI Commands
+
+`fin123 worksheet compile`, `verify`, `diff`, `list`. All support
+`--json` and `--quiet`. Exit code 3 for verification failures.
+
+### Local UI
+
+Worksheet tab in the side panel. Compile-on-demand via
+`POST /api/worksheet/compile`. Read-only DOM renderer with sticky
+headers, display formatting, inline errors, flag indicators, and
+keyboard-accessible provenance disclosure.
+
+### Key Files
+
+| File | Purpose |
+|------|---------|
+| `worksheet/evaluator.py` | Restricted row-local expression evaluator |
+| `worksheet/view_table.py` | ViewTable type and `from_fin123_run()` constructor |
+| `worksheet/spec.py` | WorksheetView YAML parser and validator |
+| `worksheet/compiler.py` | Compiler: dependency graph, evaluation, artifact assembly |
+| `worksheet/cli.py` | CLI subcommands (compile, verify, diff, list) |
+| `ui/static/worksheet_viewer.js` | DOM renderer (IIFE, zero dependencies) |
+| `ui/static/worksheet_viewer.css` | Scoped styles (CSS variables, sticky headers) |
+
+See [docs/worksheets.md](docs/worksheets.md) for full specification.
+
+---
+
+## 9. Compatibility and Extension Points
 
 ### Pod Extension Model
 

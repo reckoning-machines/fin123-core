@@ -41,6 +41,10 @@ fin123 [--json] [--quiet] [--verbose] [--version] [--help]
     events            Show event log
     run-log           Show run log
     ui                Launch local browser UI
+    worksheet list    List worksheet specs in project
+    worksheet compile Compile a worksheet from spec + build table
+    worksheet verify  Verify compiled worksheet artifact integrity
+    worksheet diff    Structural diff of two compiled worksheets
 
   Enterprise commands (require fin123-pod):
     sync              Sync SQL tables and connectors
@@ -109,7 +113,7 @@ to stdout:
 {
   "ok": true,
   "cmd": "doctor",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "data": { ... },
   "error": null
 }
@@ -171,7 +175,7 @@ evaluated and included in the overall result.
 {
   "ok": true,
   "cmd": "doctor",
-  "version": "0.3.4",
+  "version": "0.4.0",
   "data": {
     "checks": [
       {

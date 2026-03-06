@@ -1,0 +1,66 @@
+# Worksheet spec: Valuation Review
+# Compiles against the priced_estimates table output from a demo_fin123 build.
+#
+# Usage:
+#   fin123 worksheet compile worksheets/valuation_review.yaml \
+#     --table priced_estimates --project .
+
+name: valuation_review
+title: "Valuation Review — Priced Estimates"
+
+columns:
+  - source: ticker
+    label: Ticker
+
+  - source: date
+    label: Date
+    display_format:
+      type: date
+
+  - source: px_last
+    label: Price
+    display_format:
+      type: currency
+      symbol: "$"
+      places: 2
+
+  - source: eps_ntm
+    label: "EPS (NTM)"
+    display_format:
+      type: decimal
+      places: 2
+
+  - source: rev_ntm
+    label: "Rev (NTM)"
+    display_format:
+      type: decimal
+      places: 1
+
+  - name: pe_ratio
+    expression: "px_last / eps_ntm"
+    label: "P/E Ratio"
+    display_format:
+      type: decimal
+      places: 1
+
+  - name: earnings_yield
+    expression: "eps_ntm / px_last"
+    label: "Earnings Yield"
+    display_format:
+      type: percent
+      places: 2
+
+sorts:
+  - column: pe_ratio
+
+flags:
+  - name: high_pe
+    expression: "pe_ratio > 28"
+    severity: warning
+    message: "P/E above 28"
+
+header_groups:
+  - label: Market Data
+    columns: [px_last, eps_ntm, rev_ntm]
+  - label: Valuation
+    columns: [pe_ratio, earnings_yield]

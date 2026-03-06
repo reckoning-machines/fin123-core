@@ -13,7 +13,7 @@
 
 set -e
 
-RELEASE_TAG="${RELEASE_TAG:-core-v0.3.3}"
+RELEASE_TAG="${RELEASE_TAG:-core-v0.4.0}"
 VERSION="$(echo "$RELEASE_TAG" | sed 's/^core-v//')"
 
 REPO="reckoning-machines/fin123-core"

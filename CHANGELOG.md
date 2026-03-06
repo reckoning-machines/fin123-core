@@ -2,6 +2,73 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.0] — 2026-03-06
+
+### Added
+
+- **Worksheet runtime** — deterministic, read-only projections of build
+  output tables. Three new primitives:
+  - **ViewTable** — typed, immutable tabular substrate wrapping a Polars
+    DataFrame with explicit column schema. Constructed from build run
+    parquet outputs via `from_fin123_run()`.
+  - **WorksheetView** — declarative YAML spec defining source columns,
+    derived columns (row-local expressions), sorts, flags, header groups,
+    and display formats. Authored as `<project>/worksheets/*.yaml`.
+  - **CompiledWorksheet** — immutable row-oriented JSON artifact with
+    structured provenance, inline error objects (`#DIV/0!`, `#NAME?`,
+    `#ERR!`), and deterministic `content_hash_data()`.
+
+- **Worksheet CLI** — four new subcommands under `fin123 worksheet`:
+  - `compile` — reads a YAML spec + build table, evaluates derived columns
+    in dependency-graph order, applies sorts and flags, writes compiled
+    artifact.
+  - `verify` — validates compiled artifact integrity (provenance, counts,
+    content roundtrip). Exit code 3 on failure.
+  - `diff` — structural comparison of two compiled artifacts (columns, rows,
+    sorts, errors, cell-level data). Uses `row_key` for identity-based
+    matching when available.
+  - `list` — discovers `*.yaml` specs in `<project>/worksheets/` and reports
+    name, title, and column count.
+
+- **Worksheet viewer in local UI** — new Worksheet tab in the browser side
+  panel. Compile-on-demand via `POST /api/worksheet/compile`. Read-only DOM
+  renderer with sticky headers, grouped headers, display formatting
+  (currency, percent, decimal, integer, date), inline error rendering, flag
+  indicators, and keyboard-accessible provenance disclosure.
+
+- **Restricted row evaluator** — derived columns and flags use a restricted
+  subset of the formula engine. Row-local only. Allowed functions: `IF`,
+  `IFERROR`, `ISERROR`, `AND`, `OR`, `NOT`, `SUM`, `AVERAGE`, `MIN`, `MAX`,
+  `ABS`, `ROUND`, `DATE`, `YEAR`, `MONTH`, `DAY`, `EOMONTH`. Cell
+  references, range references, `VLOOKUP`, `SUMIFS`, `PARAM`, and cross-row
+  operations are rejected at validation time.
+
+- **Dependency-ordered evaluation** — derived columns may reference other
+  derived columns. The compiler builds a dependency graph and evaluates in
+  topological order. Cycles are a hard compile error. Display order always
+  matches the spec's column order.
+
+- **Demo worksheet spec** — `demo_fin123` template now includes
+  `worksheets/valuation_review.yaml` (7 columns, sorts, flags, header
+  groups) that compiles against the `priced_estimates` build output.
+
+### Documentation
+
+- `docs/worksheets.md` — full worksheet specification (ViewTable,
+  WorksheetView, CompiledWorksheet, CLI workflow, expression language,
+  v1 boundaries).
+- `ARCHITECTURE.md` — new section covering worksheet runtime primitives,
+  evaluation, CLI, UI, and key files.
+- `docs/CLI_SPEC.md` — worksheet subcommands added to command tree.
+- `demo_fin123/README.md` — worksheet quick-start steps added.
+
+### v1 Constraints
+
+Worksheets in v1 are deterministic projections only. No filtering, no
+client-side sorting, no cross-row expressions, no scalar context injection,
+no multi-worksheet composition, no client-side editing, no remote
+compilation, no charts or visualizations.
+
 ## [0.3.4] — 2026-03-03
 
 ### Fixed

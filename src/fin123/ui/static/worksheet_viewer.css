@@ -1,0 +1,266 @@
+/* worksheet_viewer.css -- Worksheet DOM renderer styles.
+ *
+ * Self-contained. No imports. No build step.
+ * Customize via CSS variables on .ws-viewer or :root.
+ */
+
+/* ────────────────────────────────────────────────────────────────
+   CSS variables (defaults)
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-viewer {
+  --ws-font-family: system-ui, -apple-system, sans-serif;
+  --ws-font-size: 13px;
+  --ws-font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
+  --ws-header-bg: #f5f5f5;
+  --ws-header-border: #d0d0d0;
+  --ws-cell-border: #e5e5e5;
+  --ws-row-hover-bg: #f0f4ff;
+  --ws-error-bg: #fff0f0;
+  --ws-error-color: #cc0000;
+  --ws-flag-info-color: #0066cc;
+  --ws-flag-warning-color: #cc8800;
+  --ws-flag-error-color: #cc0000;
+  --ws-summary-bg: #fff8f0;
+  --ws-summary-border: #e8d8c0;
+  --ws-provenance-bg: #f8f8f8;
+  --ws-provenance-border: #e0e0e0;
+  --ws-sticky-z: 10;
+  --ws-text-color: #1a1a1a;
+  --ws-text-dim: #666666;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Container
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-viewer {
+  font-family: var(--ws-font-family);
+  font-size: var(--ws-font-size);
+  color: var(--ws-text-color);
+  line-height: 1.4;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Error summary banner
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-error-summary {
+  background: var(--ws-summary-bg);
+  border: 1px solid var(--ws-summary-border);
+  border-radius: 4px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: calc(var(--ws-font-size) - 1px);
+}
+
+.ws-error-summary-title {
+  font-weight: 600;
+  color: var(--ws-error-color);
+}
+
+.ws-error-summary-detail {
+  margin-top: 4px;
+  color: var(--ws-text-dim);
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Scrollable table container
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-table-container {
+  overflow: auto;
+  max-height: 80vh;
+  border: 1px solid var(--ws-cell-border);
+  border-radius: 4px;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Table
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-table {
+  border-collapse: collapse;
+  width: 100%;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Sticky headers
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-table thead th {
+  position: sticky;
+  z-index: var(--ws-sticky-z);
+  background: var(--ws-header-bg);
+  border-bottom: 2px solid var(--ws-header-border);
+  padding: 6px 10px;
+  text-align: left;
+  font-weight: 600;
+  font-size: calc(var(--ws-font-size) - 1px);
+  white-space: nowrap;
+}
+
+.ws-header-group-row th {
+  top: 0;
+  border-bottom: 1px solid var(--ws-header-border);
+  text-align: center;
+  font-weight: 600;
+  color: var(--ws-text-dim);
+}
+
+.ws-header-group-row th.ws-group-spacer {
+  background: var(--ws-header-bg);
+}
+
+/* When group row exists, column headers sit below it */
+.ws-table thead .ws-header-row th {
+  border-bottom: 2px solid var(--ws-header-border);
+}
+
+/* Dynamic top offset set via JS for correct sticky stacking */
+
+/* ────────────────────────────────────────────────────────────────
+   Sort indicator on column headers
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-sort-indicator {
+  margin-left: 4px;
+  font-size: 10px;
+  color: var(--ws-text-dim);
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Rows & cells
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-table tbody td {
+  padding: 4px 10px;
+  border-bottom: 1px solid var(--ws-cell-border);
+  white-space: nowrap;
+}
+
+.ws-row:hover td {
+  background: var(--ws-row-hover-bg);
+}
+
+/* Numeric alignment */
+.ws-cell--float64,
+.ws-cell--int64 {
+  text-align: right;
+  font-family: var(--ws-font-mono);
+}
+
+/* Boolean */
+.ws-cell--bool {
+  text-align: center;
+}
+
+/* Date/datetime */
+.ws-cell--date,
+.ws-cell--datetime {
+  font-family: var(--ws-font-mono);
+}
+
+/* Null cells */
+.ws-cell--null {
+  color: var(--ws-text-dim);
+  font-style: italic;
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Error cells
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-cell--error {
+  background: var(--ws-error-bg);
+  color: var(--ws-error-color);
+  font-family: var(--ws-font-mono);
+  font-weight: 600;
+  font-size: calc(var(--ws-font-size) - 1px);
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Flag cells
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-flag-cell {
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--ws-cell-border);
+  white-space: nowrap;
+  width: 1%;
+}
+
+.ws-flag {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 2px;
+  vertical-align: middle;
+}
+
+.ws-flag--info {
+  background: var(--ws-flag-info-color);
+}
+
+.ws-flag--warning {
+  background: var(--ws-flag-warning-color);
+}
+
+.ws-flag--error {
+  background: var(--ws-flag-error-color);
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Provenance footer
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-provenance {
+  margin-top: 8px;
+  border: 1px solid var(--ws-provenance-border);
+  border-radius: 4px;
+  background: var(--ws-provenance-bg);
+  font-size: calc(var(--ws-font-size) - 1px);
+}
+
+.ws-provenance summary {
+  padding: 6px 12px;
+  cursor: pointer;
+  font-weight: 600;
+  color: var(--ws-text-dim);
+  user-select: none;
+}
+
+.ws-provenance summary:focus-visible {
+  outline: 2px solid var(--ws-flag-info-color);
+  outline-offset: -2px;
+}
+
+.ws-provenance-details {
+  padding: 8px 12px 12px;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 16px;
+}
+
+.ws-provenance-details dt {
+  font-weight: 600;
+  color: var(--ws-text-dim);
+}
+
+.ws-provenance-details dd {
+  margin: 0;
+  font-family: var(--ws-font-mono);
+  font-size: calc(var(--ws-font-size) - 1px);
+}
+
+/* ────────────────────────────────────────────────────────────────
+   Title
+   ──────────────────────────────────────────────────────────────── */
+
+.ws-title {
+  font-size: calc(var(--ws-font-size) + 3px);
+  font-weight: 700;
+  margin-bottom: 8px;
+}
