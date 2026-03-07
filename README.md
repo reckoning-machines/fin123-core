@@ -208,6 +208,46 @@ python -c "import fin123.demos; print('ok')"
 fin123 demo --help
 ```
 
+## Operational worksheets for applications
+
+fin123 now includes a deterministic worksheet runtime designed for applications.
+
+Many internal tools embed spreadsheet logic directly in HTML and JavaScript tables
+(derived columns, grouped headers, formatting rules, flags, audit context).
+
+fin123 replaces that pattern with a deterministic runtime.
+
+Architecture:
+
+```
+ViewTable
+↓
+WorksheetView
+↓
+CompiledWorksheet
+↓
+Renderer
+```
+
+- **ViewTable** — typed tabular data (Polars-backed)
+- **WorksheetView** — declarative YAML worksheet specification
+- **CompiledWorksheet** — immutable JSON artifact
+- **Renderer** — thin read-only viewer
+
+Instead of implementing spreadsheet behavior in application code:
+
+1. Define a worksheet specification
+2. Compile it against tabular data
+3. Render the compiled artifact
+
+Example:
+
+```bash
+fin123 worksheet compile valuation_review.yaml --table priced_estimates
+```
+
+This allows applications to embed operational worksheets without reimplementing spreadsheet behavior in UI code.
+
 ## Project Layout
 
 ```
@@ -236,6 +276,17 @@ For database-backed registries, headless runner services, connectors (Bloomberg)
 plugin marketplace, workflow automation, and SQL sync, see
 [fin123-pod](https://github.com/reckoning-machines/fin123-pod) (private, requires license).
 Built by Reckoning Machines
+
+## What is safe to add next
+
+The worksheet runtime intentionally has a narrow scope. The following improvements are low-risk:
+
+- suggest_schema() CLI helper for external adapters
+- small renderer polish (alignment, truncation, copy cell text)
+- provenance expand panel improvements
+- worksheet diff visualization in the UI
+
+These improve usability without expanding the runtime surface.
 
 ## License
 
