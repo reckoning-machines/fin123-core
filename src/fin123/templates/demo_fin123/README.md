@@ -1,13 +1,13 @@
 # demo_fin123
 
 Lifecycle demo for fin123.  Walks through commit, build, verify, diff, and
-release using a tiny valuation model with parquet inputs.
+worksheets using a tiny valuation model with parquet inputs.
 
 ## Quick start
 
 ```bash
 # 1. Scaffold the project (--set ticker=MSFT to override the default)
-fin123 new /tmp/demo --template demo_fin123
+fin123 init /tmp/demo --template demo_fin123
 
 # 2. Commit the initial workbook snapshot
 fin123 commit /tmp/demo
@@ -17,16 +17,13 @@ fin123 build /tmp/demo
 # Note the run_id printed by the build command.
 
 # 4. Verify the build (assertions must pass)
-fin123 verify-build <run_id>
+fin123 verify <run_id> --project /tmp/demo
 
 # 5. Build with a different multiple for diff comparison
 fin123 build /tmp/demo --set multiple=25
 
 # 6. Compare the two runs
-fin123 diff run <run_id_1> <run_id_2>
-
-# 7. Create a release (dev mode -- verify gate is advisory)
-fin123 release build <run_id>
+fin123 diff run <run_id_1> <run_id_2> --project /tmp/demo
 ```
 
 ## Worksheets
@@ -51,12 +48,17 @@ fin123 worksheet verify valuation_review.worksheet.json
 
 ## Intentional failure
 
-The `scenario_fail` workflow sets `discount_rate=0.95`, which violates the
-`discount_rate_sane` assertion (`$discount_rate < 0.50`).
+The `scenario_fail` workflow definition (`workflows/scenario_fail.yaml`) sets
+`discount_rate=0.95`, which violates the `discount_rate_sane` assertion
+(`$discount_rate < 0.50`). You can trigger this failure directly:
 
 ```bash
-fin123 workflow run scenario_fail /tmp/demo
+fin123 build /tmp/demo --set discount_rate=0.95
 ```
+
+> **Note:** The `fin123 workflow run` command requires
+> [fin123-pod](https://github.com/reckoning-machines/fin123-pod) (enterprise).
+> In core, use `fin123 build --set` to override params manually.
 
 ## What this template demonstrates
 
@@ -65,8 +67,8 @@ fin123 workflow run scenario_fail /tmp/demo
 - **Commit / Build / Verify flow** -- deterministic builds with assertion
   gating.
 - **Assertions** -- `eps_positive` (error) and `discount_rate_sane` (error)
-  pass by default; `scenario_fail` workflow triggers a failure.
+  pass by default; override `discount_rate` to trigger a failure.
 - **Diff** -- run two builds with different `multiple` values and compare.
-- **Release** -- create a build release after verify passes.
+- **Worksheets** -- compile a worksheet spec against build output tables.
 - **Tables** -- parquet sources with `join_left` + `validate: many_to_one`.
 - **Scalars** -- `lookup_scalar` and `"=..."` formula expressions.

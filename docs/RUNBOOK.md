@@ -84,7 +84,7 @@ Evaluates scalar and table graphs, writes outputs to `runs/<timestamp>_run_<n>/`
 fin123 verify <run_id> --project my_model
 
 # With JSON output
-fin123 verify <run_id> --project my_model --json
+fin123 --json verify <run_id> --project my_model
 ```
 
 Recomputes hashes for the specified build run. Reports pass/fail for spec hash, input hashes,
@@ -219,7 +219,7 @@ fin123 diff run <run_a> <run_b> --project my_model
 fin123 diff version v0001 v0002 --project my_model
 
 # Machine-readable output
-fin123 diff run <run_a> <run_b> --project my_model --json
+fin123 --json diff run <run_a> <run_b> --project my_model
 ```
 
 ## XLSX Import
@@ -409,7 +409,7 @@ RELEASE_TAG=core-v0.4.0 sh scripts/release_smoke.sh
 
 The script downloads both platform zips and `SHA256SUMS.txt`, verifies
 checksums, unpacks the macOS binary, and exercises `--version`, `--help`,
-and `doctor --json`. Exits non-zero on any failure.
+and `--json doctor`. Exits non-zero on any failure.
 
 ### Regenerating checksums only
 

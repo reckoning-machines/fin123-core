@@ -125,7 +125,7 @@ Enterprise commands exist in core but return exit code 4 with a clear
 
 ### Global flags
 
-Every command supports:
+Global flags must precede the subcommand: `fin123 --json build my_model`.
 
 | Flag | Description |
 |------|-------------|
@@ -193,7 +193,7 @@ Enterprise checks (stubbed in core, implemented in pod):
 9. Plugin integrity
 10. Server preflight
 
-CI usage: `fin123 doctor --json && echo "Preflight passed"`
+CI usage: `fin123 --json doctor && echo "Preflight passed"`
 
 ## Demos
 

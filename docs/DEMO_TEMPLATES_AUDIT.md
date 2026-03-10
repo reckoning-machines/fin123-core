@@ -26,7 +26,7 @@ This document inventories the existing demo/template set in the repo and defines
 ### Templates list (as implemented)
 - Command to list templates:
   - `fin123 template list` (text output)
-  - `fin123 template list --json` (JSON output)
+  - `fin123 --json template list` (JSON output)
   - `fin123 template show <name>` (show template metadata and file tree)
 - Templates found (3 bundled in core):
   - `single_company` -> `src/fin123/templates/single_company/` -> Single-company financial model with scenarios, assertions, and verify

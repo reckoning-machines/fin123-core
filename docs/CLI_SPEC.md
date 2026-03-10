@@ -86,9 +86,8 @@ Every command inherits these flags from the root group:
 set, output is JSON only. `--verbose` adds detail to both human and
 JSON modes (via the `data` field).
 
-**Placement:** Global flags are accepted before or after the subcommand
-name. Canonical style in documentation is postfix:
-`fin123 doctor --json` (not `fin123 --json doctor`).
+**Placement:** Global flags must precede the subcommand name:
+`fin123 --json doctor` (not `fin123 doctor --json`).
 
 ## Exit Codes
 
@@ -215,27 +214,27 @@ Overall: PASS (1 warning(s))
 ### Preflight check (JSON)
 
 ```bash
-fin123 doctor --json
+fin123 --json doctor
 ```
 
 ### Build a model (JSON)
 
 ```bash
-fin123 build my_model --json
+fin123 --json build my_model
 ```
 
 ### Registry status (Enterprise)
 
 Core (stub):
 ```bash
-fin123 registry status --json
+fin123 --json registry status
 # Exit code: 4
 # {"ok": false, "cmd": "registry status", ... "error": {"code": 4, "message": "Enterprise feature: install fin123-pod"}}
 ```
 
 Pod (real):
 ```bash
-fin123 registry status --json
+fin123 --json registry status
 # Exit code: 0
 # {"ok": true, "cmd": "registry status", ... "data": {"backend": "postgres", "connected": true}}
 ```
