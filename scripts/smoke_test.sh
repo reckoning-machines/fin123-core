@@ -87,7 +87,7 @@ import json
 out = Path('${DEMO_DIR}')
 run_demo(output_dir=out)
 summary = json.loads((out / 'deterministic_build_summary.json').read_text())
-assert summary.get('status') == 'pass', f'Demo status: {summary.get(\"status\")}'
+assert summary.get('verify_status') == 'pass', f'Demo status: {summary.get(\"verify_status\")}'
 print('deterministic-build demo passed')
 " 2>/dev/null; then
     pass "deterministic-build demo"

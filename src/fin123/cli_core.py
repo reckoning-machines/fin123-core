@@ -1037,12 +1037,21 @@ def demo_data_guardrails() -> None:
 
 
 @main.command()
+@click.option(
+    "--environment",
+    is_flag=True,
+    default=False,
+    help="Show only environment and namespace diagnostics.",
+)
 @click.pass_context
-def doctor(ctx: click.Context) -> None:
+def doctor(ctx: click.Context, environment: bool) -> None:
     """Preflight and compliance validation.
 
     Runs deterministic self-tests, dependency checks, and environment
     validation. Returns exit 0 if all required checks pass.
+
+    Use --environment to show only namespace and install diagnostics:
+    pod presence, core-only status, and namespace overlap detection.
 
     Exit codes:
       0  All required checks passed
@@ -1054,8 +1063,16 @@ def doctor(ctx: click.Context) -> None:
       fin123 doctor
       fin123 doctor --json
       fin123 doctor --verbose
+      fin123 doctor --environment
     """
     from fin123.doctor import run_doctor
+
+    if environment:
+        from fin123.doctor import _check_environment
+        checks = [_check_environment(ctx.obj.get("verbose", False))]
+        _doctor_output(ctx, checks)
+        return
+
     checks = run_doctor(verbose=ctx.obj.get("verbose", False), is_enterprise=False)
     _doctor_output(ctx, checks)
 

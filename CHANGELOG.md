@@ -2,6 +2,31 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.4.1] — 2026-03-12
+
+### Added
+
+- **CI pipeline enforcement** — GitHub Actions workflow (`ci.yml`) with three
+  jobs: pytest + lint, native bootstrap/smoke/acceptance scripts, and PyInstaller
+  smoke build. Runs on every push and PR to `main`.
+- **`fin123 doctor --environment`** — new flag to show only namespace and install
+  diagnostics: pod presence, core-only status, namespace overlap detection.
+- **Import-time namespace guard** — `import fin123` now emits a warning if both
+  fin123-core and fin123-pod are installed in the same virtualenv.
+
+### Fixed
+
+- **`fin123 doctor` exit code** — version mismatch between source `__version__`
+  and installed package metadata is now a warning, not a failure. Doctor only
+  exits non-zero for real operational problems (determinism, dependencies,
+  filesystem).
+
+### Documentation
+
+- `docs/CI.md` — CI pipeline contract and job descriptions.
+- `docs/INSTALL.md` — namespace note, separate virtualenv guidance.
+- `docs/OPERATIONS.md` — environment diagnostics section.
+
 ## [0.4.0] — 2026-03-06
 
 ### Added
