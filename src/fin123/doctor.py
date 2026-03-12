@@ -50,7 +50,10 @@ def run_doctor(*, verbose: bool = False, is_enterprise: bool = False) -> list[di
     # 7. Dependency integrity
     checks.append(_check_dependencies(verbose))
 
-    # 8-10. Enterprise checks (stubbed in core)
+    # 8. Environment / namespace diagnostics
+    checks.append(_check_environment(verbose))
+
+    # 9-11. Enterprise checks (stubbed in core)
     if not is_enterprise:
         checks.append(_enterprise_check_stub("Registry connectivity"))
         checks.append(_enterprise_check_stub("Plugin integrity"))
@@ -63,6 +66,7 @@ def _check_runtime(verbose: bool) -> dict[str, Any]:
     """Check 1: Runtime integrity."""
     details: dict[str, Any] = {}
     issues: list[str] = []
+    warnings: list[str] = []
 
     # Python version
     py_ver = platform.python_version()
@@ -84,14 +88,18 @@ def _check_runtime(verbose: bool) -> dict[str, Any]:
         dist_ver = importlib.metadata.version("fin123-core")
         details["dist_version"] = dist_ver
         if "fin123_version" in details and details["fin123_version"] != dist_ver:
-            issues.append(
-                f"CLI version {details['fin123_version']} != "
-                f"installed package {dist_ver}"
+            warnings.append(
+                f"Source version {details['fin123_version']} != "
+                f"installed metadata {dist_ver} "
+                f"(normal in editable installs; reinstall to sync)"
             )
     except importlib.metadata.PackageNotFoundError:
         details["dist_version"] = "(not installed as package)"
         if verbose:
             details["note"] = "Running from source checkout"
+
+    if warnings:
+        details["warnings"] = warnings
 
     return {
         "name": "Runtime",
@@ -332,6 +340,67 @@ def _check_dependencies(verbose: bool) -> dict[str, Any]:
         "ok": len(missing_required) == 0,
         "severity": "error",
         "exit_code": 5,
+        "details": details,
+    }
+
+
+def _check_environment(verbose: bool) -> dict[str, Any]:
+    """Check 8: Environment and namespace diagnostics."""
+    details: dict[str, Any] = {}
+    warnings: list[str] = []
+
+    # Virtualenv detection
+    details["in_virtualenv"] = sys.prefix != sys.base_prefix
+
+    # Pod detection
+    pod_available = False
+    try:
+        import fin123_pod
+        pod_available = True
+        details["pod_version"] = getattr(fin123_pod, "__version__", "unknown")
+    except ImportError:
+        pass
+    details["pod_installed"] = pod_available
+
+    # Core-only check
+    details["core_only"] = not pod_available
+
+    # Namespace overlap detection
+    if pod_available:
+        import importlib.metadata
+        core_dists = []
+        pod_dists = []
+        try:
+            core_dists = [str(d._path) for d in importlib.metadata.distributions()
+                          if d.metadata.get("Name", "").lower() == "fin123-core"]
+        except Exception:
+            pass
+        try:
+            pod_dists = [str(d._path) for d in importlib.metadata.distributions()
+                         if d.metadata.get("Name", "").lower() == "fin123-pod"]
+        except Exception:
+            pass
+        if core_dists and pod_dists:
+            warnings.append(
+                "Both fin123-core and fin123-pod are installed. "
+                "Namespace overlap may cause import issues. "
+                "Use separate virtualenvs for isolated evaluation."
+            )
+            details["namespace_overlap"] = True
+        else:
+            details["namespace_overlap"] = False
+    else:
+        details["namespace_overlap"] = False
+
+    if warnings:
+        details["warnings"] = warnings
+
+    ok = len(warnings) == 0
+    return {
+        "name": "Environment",
+        "ok": ok,
+        "severity": "warning",
+        "exit_code": 0,
         "details": details,
     }
 

@@ -68,6 +68,21 @@ Validates:
 - Timezone (warning if not UTC, not a failure)
 - Dependency availability
 
+## Environment Diagnostics
+
+```bash
+fin123 --json doctor --verbose
+```
+
+The Environment check (included in doctor output) reports:
+- Whether running inside a virtualenv
+- Whether fin123-pod is installed alongside core
+- Whether namespace overlap is detected
+
+If both core and pod are installed in the same virtualenv, doctor will
+emit a warning. This is informational, not a hard failure, but separate
+virtualenvs are recommended for clean evaluation.
+
 ## Deterministic Verification
 
 ### Single build

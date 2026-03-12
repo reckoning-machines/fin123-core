@@ -88,6 +88,19 @@ bash scripts/run_acceptance_suite.sh
 - Local browser UI (FastAPI)
 - CLI with structured JSON output
 
+## Namespace Note
+
+fin123-core and fin123-pod share the `fin123` Python import namespace.
+Do NOT install both packages into the same virtualenv unless you understand
+the implications:
+
+- The first package on `sys.path` wins for shared namespace modules.
+- Pod extends core; it does not replace core modules.
+- For evaluation, use separate virtualenvs: one for core-only, one for pod.
+
+The `fin123 doctor` command includes an Environment check that detects
+namespace overlap and warns if both packages are co-installed.
+
 ## What fin123-core Does NOT Provide
 
 The following require fin123-pod (separate repository):
