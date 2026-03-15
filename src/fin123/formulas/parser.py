@@ -90,8 +90,14 @@ NAME.1: /[A-Za-z_][A-Za-z0-9_]*/
 _parser = Lark(GRAMMAR, parser="lalr", start="start")
 
 
+_parse_cache: dict[str, Tree] = {}
+
+
 def parse_formula(text: str) -> Tree:
     """Parse a formula string (must start with ``=``) into a Lark Tree.
+
+    Results are cached by formula text to avoid re-parsing identical formulas
+    across multiple runs or batch iterations.
 
     Args:
         text: The formula text, e.g. ``"=revenue * (1 - tax_rate)"``.
@@ -103,14 +109,18 @@ def parse_formula(text: str) -> Tree:
         FormulaParseError: If the formula has invalid syntax.
     """
     text = text.strip()
+    if text in _parse_cache:
+        return _parse_cache[text]
     if not text.startswith("="):
         raise FormulaParseError("Formula must start with '='", position=0)
     try:
-        return _parser.parse(text)
+        tree = _parser.parse(text)
     except Exception as exc:
         # Extract position info from Lark exception if available
         pos = getattr(exc, "column", None)
         raise FormulaParseError(str(exc), position=pos) from exc
+    _parse_cache[text] = tree
+    return tree
 
 
 def parse_sheet_ref(token_str: str) -> tuple[str, str]:

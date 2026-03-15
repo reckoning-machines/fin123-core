@@ -27,6 +27,7 @@ class TableGraph:
         self.base_dir = base_dir
         self._sources: dict[str, pl.LazyFrame] = {}
         self._plans: list[dict[str, Any]] = []
+        self._deferred_join_validations: list[tuple[str, list[str], str]] = []
 
     def add_source(self, name: str, path: str, format: str = "csv") -> None:
         """Register a source table from a file.
@@ -83,13 +84,22 @@ class TableGraph:
                     key = self._yaml_key_fixup(k)
                     if key != "func":
                         kwargs[key] = v
-                # Inject available tables for join operations
+                # Inject available tables and deferred validation list for joins
                 if func_name == "join_left":
                     kwargs["_tables"] = frames
+                    kwargs["_deferred_validations"] = self._deferred_join_validations
                 lf = fn(lf, **kwargs)
             frames[plan["name"]] = lf
 
-        return {name: lf.collect() for name, lf in frames.items()}
+        collected = {name: lf.collect() for name, lf in frames.items()}
+
+        # Run deferred join validations on materialized DataFrames
+        from fin123.functions.table import _validate_join_df
+        for right_name, key_cols, validate in self._deferred_join_validations:
+            if right_name in collected:
+                _validate_join_df(collected[right_name], key_cols, validate)
+
+        return collected
 
     @staticmethod
     def _yaml_key_fixup(k: object) -> str:

@@ -56,6 +56,7 @@ class WorkbookResult:
         scalars: Computed scalar values.
         tables: Computed table DataFrames.
         run_dir: Path to the persisted run directory.
+        timings_ms: Phase timing dict (eval_tables, eval_scalars, etc.).
     """
 
     def __init__(
@@ -63,6 +64,7 @@ class WorkbookResult:
         scalars: dict[str, Any],
         tables: dict[str, pl.DataFrame],
         run_dir: Path,
+        timings_ms: dict[str, float] | None = None,
     ) -> None:
         """Initialize a WorkbookResult.
 
@@ -70,10 +72,12 @@ class WorkbookResult:
             scalars: Computed scalar values.
             tables: Computed table DataFrames.
             run_dir: Path to the persisted run directory.
+            timings_ms: Phase timing dict.
         """
         self.scalars = scalars
         self.tables = tables
         self.run_dir = run_dir
+        self.timings_ms = timings_ms or {}
 
 
 class Workbook:
@@ -312,6 +316,7 @@ class Workbook:
                 scalars=output_scalars,
                 tables=output_tables,
                 run_dir=run_dir,
+                timings_ms=timings_ms,
             )
 
         except Exception as exc:

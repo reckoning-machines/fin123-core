@@ -340,11 +340,15 @@ def _do_build(
             "run_dir": result.run_dir.name,
             "scalars_count": len(result.scalars),
             "tables": list(result.tables.keys()),
+            "timings_ms": result.timings_ms,
         }))
     else:
         _emit(ctx, f"Build saved to: {result.run_dir.name}")
         _emit(ctx, f"Scalars: {len(result.scalars)}")
         _emit(ctx, f"Tables: {', '.join(result.tables.keys())}")
+        if result.timings_ms and ctx.obj.get("verbose"):
+            parts = [f"{k}={v:.1f}ms" for k, v in result.timings_ms.items()]
+            _emit(ctx, f"Timings: {', '.join(parts)}")
 
 
 @main.command()

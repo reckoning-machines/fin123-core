@@ -138,12 +138,14 @@ def table_join_left(
     right_on: str | list[str] | None = None,
     validate: str = "many_to_one",
     _tables: dict[str, pl.LazyFrame] | None = None,
+    _deferred_validations: list | None = None,
     **_: Any,
 ) -> pl.LazyFrame:
     """Left join with deterministic duplicate validation.
 
     For finance-grade VLOOKUP-like joins, the right side is validated against
-    duplicates by default (``validate="many_to_one"``).
+    duplicates by default (``validate="many_to_one"``).  Validation is deferred
+    until after all LazyFrame plans are collected, preserving lazy composition.
 
     Args:
         lf: Left LazyFrame.
@@ -156,12 +158,15 @@ def table_join_left(
                   Default is ``many_to_one`` which raises on right-side
                   duplicates in the join key.
         _tables: Dict of available tables (injected by the table graph evaluator).
+        _deferred_validations: List to append deferred validation specs to
+            (injected by the table graph evaluator).
 
     Returns:
         Joined LazyFrame.
 
     Raises:
-        ValueError: If the right table is not found, or if validation fails.
+        ValueError: If the right table is not found, or if validation fails
+            (raised during deferred validation after collection).
     """
     if _tables is None or right not in _tables:
         raise ValueError(
@@ -183,12 +188,17 @@ def table_join_left(
     if not effective_join_on and not (effective_l_on and effective_r_on):
         raise ValueError("join_left: must specify 'on' or both 'left_on' and 'right_on'")
 
-    # Dtype compatibility check on join keys
+    # Dtype compatibility check on join keys (uses schema, no collect needed)
     _check_join_key_dtypes(lf, right_lf, effective_join_on, effective_l_on, effective_r_on)
 
-    # Validate right-side duplicates (must collect to check)
-    if validate != "none":
-        _validate_join(right_lf, effective_join_on or effective_r_on or [], validate)
+    # Defer validation until after collection to preserve lazy composition
+    if validate not in ("none", "many_to_many", "one_to_many"):
+        val_keys = effective_join_on or effective_r_on or []
+        if _deferred_validations is not None and val_keys:
+            _deferred_validations.append((right, val_keys, validate))
+        else:
+            # Fallback: validate eagerly if no deferred list available
+            _validate_join(right_lf, val_keys, validate)
 
     if effective_join_on:
         return lf.join(right_lf, on=effective_join_on, how="left")
@@ -302,6 +312,59 @@ def _validate_join(
     # Use lazy aggregation: group by key cols, count, filter count > 1
     dup_df = (
         right_lf
+        .group_by(key_cols)
+        .agg(pl.len().alias("_dup_count"))
+        .filter(pl.col("_dup_count") > 1)
+        .collect()
+    )
+
+    if len(dup_df) > 0:
+        sample_keys = dup_df.select(key_cols).head(5).to_dicts()
+        sample_str = ", ".join(str(row) for row in sample_keys)
+        raise ValueError(
+            f"join_left validate={validate!r}: right table has "
+            f"{len(dup_df)} duplicate key group(s) on {key_cols}. "
+            f"Sample duplicates: {sample_str}. "
+            f"Use validate='many_to_many' to allow duplicates."
+        )
+
+
+def _validate_join_df(
+    right_df: pl.DataFrame, key_cols: list[str], validate: str
+) -> None:
+    """Validate join cardinality on a materialized DataFrame.
+
+    This is the deferred counterpart to ``_validate_join``.  It runs after
+    all LazyFrame plans have been collected, avoiding early materialization
+    during plan construction.
+
+    Args:
+        right_df: Materialized right-side DataFrame.
+        key_cols: Join key column(s).
+        validate: Validation mode.
+
+    Raises:
+        ValueError: If validation fails.
+    """
+    if not key_cols or validate in ("many_to_many", "one_to_many"):
+        return
+
+    if validate in ("many_to_one", "one_to_one"):
+        # Null key check
+        null_filter = pl.lit(False)
+        for kc in key_cols:
+            null_filter = null_filter | pl.col(kc).is_null()
+        null_count = right_df.filter(null_filter).height
+        if null_count > 0:
+            raise ValueError(
+                f"join_left validate={validate!r}: right table has "
+                f"{null_count} row(s) with null join key(s) on {key_cols}. "
+                f"Clean nulls or use validate='many_to_many'."
+            )
+
+    # Duplicate key check
+    dup_df = (
+        right_df.lazy()
         .group_by(key_cols)
         .agg(pl.len().alias("_dup_count"))
         .filter(pl.col("_dup_count") > 1)

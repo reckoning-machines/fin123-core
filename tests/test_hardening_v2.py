@@ -462,6 +462,94 @@ class TestLookupEdgeCases:
         assert result == "a"
 
 
+class TestLookupParamResolution:
+    """lookup_scalar key_value should resolve $param references via the scalar graph."""
+
+    def test_dollar_ref_key_value_resolves(self, tmp_path: Path) -> None:
+        """$active_ticker in lookup key_value should resolve from params."""
+        import yaml
+        from fin123.workbook import Workbook
+
+        (tmp_path / "inputs").mkdir()
+        data = pl.DataFrame({"ticker": ["AAPL", "MSFT", "GOOG"], "revenue": [1000, 2000, 3000]})
+        data.write_csv(tmp_path / "inputs" / "data.csv")
+
+        spec = {
+            "version": 1,
+            "params": {"active_ticker": "AAPL"},
+            "tables": {"data": {"source": "inputs/data.csv", "format": "csv"}},
+            "plans": [],
+            "outputs": [
+                {"name": "rev", "type": "scalar", "func": "lookup_scalar",
+                 "args": {"table_name": "data", "key_col": "ticker",
+                          "value_col": "revenue", "key_value": "$active_ticker"}},
+                {"name": "data", "type": "table"},
+            ],
+        }
+        (tmp_path / "workbook.yaml").write_text(yaml.dump(spec))
+        (tmp_path / "fin123.yaml").write_text(yaml.dump({"max_runs": 5}))
+
+        wb = Workbook(tmp_path)
+        result = wb.run()
+        assert result.scalars["rev"] == 1000
+
+    def test_dollar_ref_key_value_with_override(self, tmp_path: Path) -> None:
+        """Overriding active_ticker via --set should change lookup target."""
+        import yaml
+        from fin123.workbook import Workbook
+
+        (tmp_path / "inputs").mkdir()
+        data = pl.DataFrame({"ticker": ["AAPL", "MSFT", "GOOG"], "revenue": [1000, 2000, 3000]})
+        data.write_csv(tmp_path / "inputs" / "data.csv")
+
+        spec = {
+            "version": 1,
+            "params": {"active_ticker": "AAPL"},
+            "tables": {"data": {"source": "inputs/data.csv", "format": "csv"}},
+            "plans": [],
+            "outputs": [
+                {"name": "rev", "type": "scalar", "func": "lookup_scalar",
+                 "args": {"table_name": "data", "key_col": "ticker",
+                          "value_col": "revenue", "key_value": "$active_ticker"}},
+                {"name": "data", "type": "table"},
+            ],
+        }
+        (tmp_path / "workbook.yaml").write_text(yaml.dump(spec))
+        (tmp_path / "fin123.yaml").write_text(yaml.dump({"max_runs": 5}))
+
+        wb = Workbook(tmp_path, overrides={"active_ticker": "GOOG"})
+        result = wb.run()
+        assert result.scalars["rev"] == 3000
+
+    def test_literal_key_value_still_works(self, tmp_path: Path) -> None:
+        """Literal (non-$ref) key_value must still work."""
+        import yaml
+        from fin123.workbook import Workbook
+
+        (tmp_path / "inputs").mkdir()
+        data = pl.DataFrame({"ticker": ["AAPL", "MSFT"], "revenue": [1000, 2000]})
+        data.write_csv(tmp_path / "inputs" / "data.csv")
+
+        spec = {
+            "version": 1,
+            "params": {},
+            "tables": {"data": {"source": "inputs/data.csv", "format": "csv"}},
+            "plans": [],
+            "outputs": [
+                {"name": "rev", "type": "scalar", "func": "lookup_scalar",
+                 "args": {"table_name": "data", "key_col": "ticker",
+                          "value_col": "revenue", "key_value": "MSFT"}},
+                {"name": "data", "type": "table"},
+            ],
+        }
+        (tmp_path / "workbook.yaml").write_text(yaml.dump(spec))
+        (tmp_path / "fin123.yaml").write_text(yaml.dump({"max_runs": 5}))
+
+        wb = Workbook(tmp_path)
+        result = wb.run()
+        assert result.scalars["rev"] == 2000
+
+
 class TestSumifsCountifsEdgeCases:
     """SUMIFS and COUNTIFS must handle type edge cases."""
 

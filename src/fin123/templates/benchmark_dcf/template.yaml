@@ -1,0 +1,8 @@
+name: benchmark_dcf
+description: "Benchmark operating model: quarterly multi-segment financials with DCF valuation"
+engine_compat: ">=0.4.0"
+invariants:
+  - deterministic_build
+  - assertion_gating
+  - verify_pass
+  - batch_semantics

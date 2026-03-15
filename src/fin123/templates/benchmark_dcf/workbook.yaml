@@ -1,0 +1,251 @@
+# fin123 workbook — benchmark DCF operating model
+#
+# 66,000-row quarterly operating dataset (10 tickers × 5 segments × 3 regions
+# × 5 products × 22 years × 4 quarters).  Table graph derives operating
+# metrics and aggregates by ticker.  Scalar graph produces a 5-year DCF
+# valuation for the active ticker.
+#
+# Usage:
+#   fin123 build .
+#   fin123 build . --scenario bull
+#   fin123 batch build . --params-file inputs/scenarios.csv
+#   fin123 batch build . --params-file inputs/sensitivity.csv
+version: 1
+
+params:
+  active_ticker: AAPL
+  revenue_growth: 0.08
+  ebit_margin: 0.22
+  tax_rate: 0.21
+  wacc: 0.10
+  terminal_growth: 0.025
+  share_count: 2000
+
+scenarios:
+  base:
+    overrides:
+      revenue_growth: 0.08
+      ebit_margin: 0.22
+      wacc: 0.10
+      terminal_growth: 0.025
+  bull:
+    overrides:
+      revenue_growth: 0.14
+      ebit_margin: 0.28
+      wacc: 0.08
+      terminal_growth: 0.03
+  bear:
+    overrides:
+      revenue_growth: 0.03
+      ebit_margin: 0.15
+      wacc: 0.12
+      terminal_growth: 0.02
+
+tables:
+  operating_data:
+    source: inputs/operating_data.csv
+    format: csv
+
+plans:
+  # Step 1: Derive operating metrics across all 66K rows (Polars vectorized)
+  - name: enriched
+    source: operating_data
+    steps:
+      - func: with_column
+        name: gross_profit
+        expression: 'col("revenue") - col("cogs")'
+      - func: with_column
+        name: ebit
+        expression: 'col("gross_profit") - col("opex")'
+      - func: with_column
+        name: ebitda
+        expression: 'col("ebit") + col("da")'
+      - func: with_column
+        name: nopat
+        expression: 'col("ebit") * lit(0.79)'
+      - func: with_column
+        name: fcf
+        expression: 'col("nopat") + col("da") - col("capex")'
+      - func: with_column
+        name: gross_margin
+        expression: 'col("gross_profit") / col("revenue")'
+      - func: with_column
+        name: ebit_margin_actual
+        expression: 'col("ebit") / col("revenue")'
+      - func: sort
+        by: [ticker, year, quarter]
+
+  # Step 2: Aggregate by ticker (group 66K rows → 10 rows)
+  - name: ticker_summary
+    source: enriched
+    steps:
+      - func: group_agg
+        group_by: [ticker]
+        aggs:
+          total_revenue: "sum(revenue)"
+          total_cogs: "sum(cogs)"
+          total_ebit: "sum(ebit)"
+          total_ebitda: "sum(ebitda)"
+          total_nopat: "sum(nopat)"
+          total_fcf: "sum(fcf)"
+          avg_gross_margin: "mean(gross_margin)"
+          avg_ebit_margin: "mean(ebit_margin_actual)"
+          avg_price: "mean(price)"
+          avg_shares: "mean(shares)"
+      - func: sort
+        by: [ticker]
+
+outputs:
+  # Scalar lookups keyed by active_ticker
+  - name: base_revenue
+    type: scalar
+    func: lookup_scalar
+    args:
+      table_name: ticker_summary
+      key_col: ticker
+      value_col: total_revenue
+      key_value: "$active_ticker"
+
+  - name: base_ebitda
+    type: scalar
+    func: lookup_scalar
+    args:
+      table_name: ticker_summary
+      key_col: ticker
+      value_col: total_ebitda
+      key_value: "$active_ticker"
+
+  - name: base_fcf
+    type: scalar
+    func: lookup_scalar
+    args:
+      table_name: ticker_summary
+      key_col: ticker
+      value_col: total_fcf
+      key_value: "$active_ticker"
+
+  - name: last_price
+    type: scalar
+    func: lookup_scalar
+    args:
+      table_name: ticker_summary
+      key_col: ticker
+      value_col: avg_price
+      key_value: "$active_ticker"
+
+  # 5-year revenue projection
+  - name: rev_y1
+    type: scalar
+    formula: "=base_revenue * (1 + revenue_growth)"
+  - name: rev_y2
+    type: scalar
+    formula: "=rev_y1 * (1 + revenue_growth)"
+  - name: rev_y3
+    type: scalar
+    formula: "=rev_y2 * (1 + revenue_growth)"
+  - name: rev_y4
+    type: scalar
+    formula: "=rev_y3 * (1 + revenue_growth)"
+  - name: rev_y5
+    type: scalar
+    formula: "=rev_y4 * (1 + revenue_growth)"
+
+  # Projected EBIT and NOPAT
+  - name: ebit_y1
+    type: scalar
+    formula: "=rev_y1 * ebit_margin"
+  - name: nopat_y1
+    type: scalar
+    formula: "=ebit_y1 * (1 - tax_rate)"
+  - name: fcf_y1
+    type: scalar
+    formula: "=nopat_y1"
+
+  - name: ebit_y2
+    type: scalar
+    formula: "=rev_y2 * ebit_margin"
+  - name: nopat_y2
+    type: scalar
+    formula: "=ebit_y2 * (1 - tax_rate)"
+  - name: fcf_y2
+    type: scalar
+    formula: "=nopat_y2"
+
+  - name: ebit_y3
+    type: scalar
+    formula: "=rev_y3 * ebit_margin"
+  - name: nopat_y3
+    type: scalar
+    formula: "=ebit_y3 * (1 - tax_rate)"
+  - name: fcf_y3
+    type: scalar
+    formula: "=nopat_y3"
+
+  - name: ebit_y4
+    type: scalar
+    formula: "=rev_y4 * ebit_margin"
+  - name: nopat_y4
+    type: scalar
+    formula: "=ebit_y4 * (1 - tax_rate)"
+  - name: fcf_y4
+    type: scalar
+    formula: "=nopat_y4"
+
+  - name: ebit_y5
+    type: scalar
+    formula: "=rev_y5 * ebit_margin"
+  - name: nopat_y5
+    type: scalar
+    formula: "=ebit_y5 * (1 - tax_rate)"
+  - name: fcf_y5
+    type: scalar
+    formula: "=nopat_y5"
+
+  # DCF valuation
+  - name: pv_fcf
+    type: scalar
+    formula: "=NPV(wacc, fcf_y1, fcf_y2, fcf_y3, fcf_y4, fcf_y5)"
+
+  - name: terminal_value
+    type: scalar
+    formula: "=fcf_y5 * (1 + terminal_growth) / (wacc - terminal_growth)"
+
+  - name: pv_terminal
+    type: scalar
+    formula: "=terminal_value / (1 + wacc) ^ 5"
+
+  - name: enterprise_value
+    type: scalar
+    formula: "=pv_fcf + pv_terminal"
+
+  - name: equity_value
+    type: scalar
+    formula: "=enterprise_value"
+
+  - name: value_per_share
+    type: scalar
+    formula: "=equity_value / share_count"
+
+  - name: implied_upside
+    type: scalar
+    formula: "=(value_per_share - last_price) / last_price"
+
+  # Table outputs
+  - name: enriched
+    type: table
+  - name: ticker_summary
+    type: table
+
+assertions:
+  - name: ev_positive
+    expr: "$enterprise_value > 0"
+    severity: error
+  - name: margin_bounded
+    expr: "$ebit_margin > 0"
+    severity: error
+  - name: wacc_above_terminal
+    expr: "$wacc > $terminal_growth"
+    severity: error
+  - name: growth_reasonable
+    expr: "$revenue_growth < 0.50"
+    severity: warn
