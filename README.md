@@ -36,24 +36,23 @@ pip install -e ".[dev]"
 ### Usage
 
 ```bash
-# Create a project from a template
-fin123 init my_model --template single_company --set ticker=AAPL
-
-# Commit the workbook snapshot
-fin123 commit my_model
+# Create a project from the benchmark DCF template
+fin123 init my_model --template benchmark_dcf
 
 # Build (evaluate the workbook)
 fin123 build my_model
-# => Build saved to: 20260227T120000_run_1
+
+# Launch the browser UI (pre-populated DCF sheet)
+fin123 ui my_model
+
+# Commit the workbook snapshot
+fin123 commit my_model
 
 # Verify build integrity (requires a completed build)
 fin123 verify 20260227T120000_run_1 --project my_model
 
 # Preflight checks
 fin123 doctor
-
-# Launch the browser UI
-fin123 ui my_model
 ```
 
 > **Note:** `verify` requires a completed build run.

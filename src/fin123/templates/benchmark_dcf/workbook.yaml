@@ -236,6 +236,98 @@ outputs:
   - name: ticker_summary
     type: table
 
+sheets:
+  - name: DCF Model
+    n_rows: 35
+    n_cols: 7
+    cells:
+      # Header
+      A1: {value: "Ticker"}
+      B1: {formula: '=PARAM("active_ticker")'}
+
+      # Assumptions
+      A3: {value: "ASSUMPTIONS"}
+      A4: {value: "Revenue Growth"}
+      B4: {formula: '=PARAM("revenue_growth")'}
+      A5: {value: "EBIT Margin"}
+      B5: {formula: '=PARAM("ebit_margin")'}
+      A6: {value: "Tax Rate"}
+      B6: {formula: '=PARAM("tax_rate")'}
+      A7: {value: "WACC"}
+      B7: {formula: '=PARAM("wacc")'}
+      A8: {value: "Terminal Growth"}
+      B8: {formula: '=PARAM("terminal_growth")'}
+      A9: {value: "Shares Outstanding"}
+      B9: {formula: '=PARAM("share_count")'}
+
+      # Historical
+      A11: {value: "HISTORICAL"}
+      A12: {value: "Base Revenue"}
+      B12: {formula: "=base_revenue"}
+      A13: {value: "Base EBITDA"}
+      B13: {formula: "=base_ebitda"}
+      A14: {value: "Base FCF"}
+      B14: {formula: "=base_fcf"}
+      A15: {value: "Last Price"}
+      B15: {formula: "=last_price"}
+
+      # Projections header
+      A17: {value: "PROJECTIONS"}
+      B17: {value: "Year 1"}
+      C17: {value: "Year 2"}
+      D17: {value: "Year 3"}
+      E17: {value: "Year 4"}
+      F17: {value: "Year 5"}
+
+      # Revenue
+      A18: {value: "Revenue"}
+      B18: {formula: "=rev_y1"}
+      C18: {formula: "=rev_y2"}
+      D18: {formula: "=rev_y3"}
+      E18: {formula: "=rev_y4"}
+      F18: {formula: "=rev_y5"}
+
+      # EBIT
+      A19: {value: "EBIT"}
+      B19: {formula: "=ebit_y1"}
+      C19: {formula: "=ebit_y2"}
+      D19: {formula: "=ebit_y3"}
+      E19: {formula: "=ebit_y4"}
+      F19: {formula: "=ebit_y5"}
+
+      # NOPAT
+      A20: {value: "NOPAT"}
+      B20: {formula: "=nopat_y1"}
+      C20: {formula: "=nopat_y2"}
+      D20: {formula: "=nopat_y3"}
+      E20: {formula: "=nopat_y4"}
+      F20: {formula: "=nopat_y5"}
+
+      # FCF
+      A21: {value: "FCF"}
+      B21: {formula: "=fcf_y1"}
+      C21: {formula: "=fcf_y2"}
+      D21: {formula: "=fcf_y3"}
+      E21: {formula: "=fcf_y4"}
+      F21: {formula: "=fcf_y5"}
+
+      # Valuation
+      A23: {value: "VALUATION"}
+      A24: {value: "PV of FCFs"}
+      B24: {formula: "=pv_fcf"}
+      A25: {value: "Terminal Value"}
+      B25: {formula: "=terminal_value"}
+      A26: {value: "PV Terminal"}
+      B26: {formula: "=pv_terminal"}
+      A27: {value: "Enterprise Value"}
+      B27: {formula: "=enterprise_value"}
+      A28: {value: "Equity Value"}
+      B28: {formula: "=equity_value"}
+      A29: {value: "Value per Share"}
+      B29: {formula: "=value_per_share"}
+      A30: {value: "Implied Upside"}
+      B30: {formula: "=implied_upside"}
+
 assertions:
   - name: ev_positive
     expr: "$enterprise_value > 0"

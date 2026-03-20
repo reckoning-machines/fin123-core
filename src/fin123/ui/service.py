@@ -673,14 +673,31 @@ class ProjectService:
     # ------------------------------------------------------------------
 
     def _build_cell_graph(self):
-        """Lazily build (or rebuild) the CellGraph from current sheet data."""
+        """Lazily build (or rebuild) the CellGraph from current sheet data.
+
+        The evaluation context includes workbook params and, when a completed
+        build exists, the scalar outputs from that build.  This allows cell
+        formulas to reference scalar outputs (e.g. ``=rev_y1``) without
+        needing to inline the full formula.
+        """
         from fin123.cell_graph import CellGraph
 
         sheets_data: dict[str, dict[str, Any]] = {}
         for s in self._sheets:
             sheets_data[s["name"]] = s.get("cells", {})
         params = dict(self._spec.get("params", {}))
-        self._cell_graph = CellGraph(sheets_data, self._names, params=params)
+
+        # Merge scalar outputs from the latest build (if any) so that cell
+        # formulas can reference computed scalars like =rev_y1.
+        scalar_data = self.get_scalar_outputs()
+        scalars = scalar_data.get("scalars", {})
+        if scalars:
+            # Scalars layer on top of params; explicit params win on conflict.
+            merged = {**scalars, **params}
+        else:
+            merged = params
+
+        self._cell_graph = CellGraph(sheets_data, self._names, params=merged)
         return self._cell_graph
 
     def _get_cell_graph(self):
