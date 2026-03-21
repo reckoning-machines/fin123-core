@@ -1863,6 +1863,15 @@ body.mode-spreadsheet #cell-addr {
 body.mode-spreadsheet #fx-label {
   color: #666666;
 }
+body.mode-spreadsheet .btn-pipeline-menu {
+  background: none !important;
+  border-color: transparent !important;
+  color: #444444 !important;
+}
+body.mode-spreadsheet .btn-pipeline-menu:hover {
+  background: rgba(0, 0, 0, 0.06) !important;
+  color: #111111 !important;
+}
 body.mode-spreadsheet #cell-editor {
   background: #FFFFFF;
   color: #111111;

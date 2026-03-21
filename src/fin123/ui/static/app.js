@@ -514,9 +514,15 @@ function updateCellInfo() {
   const a = addr(S.curRow, S.curCol);
   cellAddr.value = a;
   const cell = S.cells[a];
-  fbar.value = cell ? cell.raw : "";
+  const raw = cell ? cell.raw : "";
+  const isFormula = raw.startsWith("=");
+
+  // Formula bar: show raw value; formulas are read-only, inputs are editable
+  fbar.value = raw;
+  fbar.readOnly = isFormula;
+
   // Recompute precedents for the active cell
-  S.precedents = cell ? extractPrecedents(cell.raw) : [];
+  S.precedents = cell ? extractPrecedents(raw) : [];
   updateStatus();
 }
 
@@ -640,6 +646,9 @@ function cancelEdit() {
 }
 
 // ── Formula bar editing ──
+// Unlock editing on explicit focus (matches Excel: click formula bar to edit)
+fbar.addEventListener("focus", () => { fbar.readOnly = false; });
+
 let _fbarValidateTimer = null;
 fbar.addEventListener("keydown", e => {
   if (e.key === "Enter") {

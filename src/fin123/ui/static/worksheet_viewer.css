@@ -294,9 +294,10 @@
   color: var(--ws-text-soft);
 }
 
-/* Key outputs: semibold only */
+/* Key outputs: semibold + full black — wins over formula/lookup color */
 .ws-cell--key-output {
   font-weight: 600;
+  color: #000000;
 }
 
 /* Dense values — medium density */

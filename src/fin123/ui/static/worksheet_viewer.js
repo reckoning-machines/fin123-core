@@ -570,6 +570,54 @@ var WorksheetViewer = (function () {
   }
 
   // ────────────────────────────────────────────────────────────────
+  // Numeric formatting helpers
+  // ────────────────────────────────────────────────────────────────
+
+  /** Strip floating-point noise before formatting. */
+  function cleanFloat(n) {
+    return parseFloat(n.toFixed(10));
+  }
+
+  /**
+   * Format a numeric value with magnitude-appropriate precision and grouping.
+   * Purely shape-driven — no semantic awareness.
+   *
+   * Rules:
+   *   integer-like (abs(n - round(n)) < 1e-9) → 0 decimals
+   *   abs >= 1000 → max 2 decimals, comma grouping
+   *   abs >= 1    → max 3 decimals, no grouping
+   *   abs < 1     → max 4 decimals, no grouping
+   *   trailing zeros trimmed automatically by toLocaleString
+   */
+  function formatNumber(value) {
+    if (value == null) return "";
+    if (typeof value !== "number" || !Number.isFinite(value)) return String(value);
+
+    var n = cleanFloat(value);
+    var abs = Math.abs(n);
+    var isIntegerLike = Math.abs(n - Math.round(n)) < 1e-9;
+    var useGrouping = abs >= 1000;
+
+    if (isIntegerLike) {
+      return n.toLocaleString("en-US", {
+        useGrouping: useGrouping,
+        maximumFractionDigits: 0
+      });
+    }
+
+    var maxFrac;
+    if (abs >= 1000) maxFrac = 2;
+    else if (abs >= 1) maxFrac = 3;
+    else maxFrac = 4;
+
+    return n.toLocaleString("en-US", {
+      useGrouping: useGrouping,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: maxFrac
+    });
+  }
+
+  // ────────────────────────────────────────────────────────────────
   // Default formatting by column type
   // ────────────────────────────────────────────────────────────────
 
@@ -577,11 +625,10 @@ var WorksheetViewer = (function () {
     if (columnType === "bool") {
       return value ? "TRUE" : "FALSE";
     }
-    if (columnType === "float64") {
+    if (columnType === "float64" || columnType === "int64") {
       var n = Number(value);
       if (!isNaN(n)) {
-        // Default: no truncation, show as-is
-        return String(n);
+        return formatNumber(n);
       }
     }
     return escapeText(value);
