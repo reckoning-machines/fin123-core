@@ -62,21 +62,43 @@ grid revenue_growth 0.04 0.06 0.08 vs wacc 0.08 0.09 0.10 --output value_per_sha
 
 ## Example Workflow
 
+Using the benchmark DCF template with AAPL operating data:
+
+```bash
+# Create project from template
+fin123 init my_dcf --template benchmark_dcf
+fin123 ui my_dcf
 ```
+
+Then in Terminal Mode:
+
+```
+# Set assumptions and commit the base case
+set active_ticker = AAPL
 set revenue_growth = 0.08
+set ebit_margin = 0.22
+set wacc = 0.10
 commit
 scenario save base
 
-set revenue_growth = 0.12
+# Change assumptions for bull case
+set revenue_growth = 0.14
+set ebit_margin = 0.28
+set wacc = 0.08
 commit
 scenario save bull
 
+# Compare base vs bull
 compare base bull
 
-sweep revenue_growth range(0.04, 0.12, 0.02)
+# Sweep revenue growth across 5 values
+sweep revenue_growth 0.04 0.06 0.08 0.10 0.12 --outputs value_per_share enterprise_value implied_upside
+
+# 2D sensitivity grid: revenue growth vs WACC
 grid revenue_growth 0.04 0.08 0.12 vs wacc 0.08 0.10 0.12 --output value_per_share
 
-ai draft addin "calculate compound annual growth rate"
+# Generate an AI add-in
+ai draft addin "calculate compound annual growth rate from start and end values over n periods"
 validate draft draft_0001
 apply draft draft_0001
 commit
