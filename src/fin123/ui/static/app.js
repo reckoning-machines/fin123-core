@@ -57,6 +57,7 @@ const S = {
   modelVersions: [],
   precedents: [],           // addresses of direct precedent cells
   showPrecedents: localStorage.getItem("fin123_showPrecedents") === "1",
+  uiMode: localStorage.getItem("fin123_uiMode") || "spreadsheet",
 };
 
 // Save current sheet state before switching
@@ -2719,10 +2720,1863 @@ document.getElementById("btn-ws-compile").addEventListener("click", async () => 
   }
 });
 
+// ═══════════════════════════════════════════════
+// Mode System
+// ═══════════════════════════════════════════════
+
+function setMode(mode) {
+  if (!["spreadsheet", "system", "terminal"].includes(mode)) return;
+  S.uiMode = mode;
+  localStorage.setItem("fin123_uiMode", mode);
+  document.body.className = document.body.className.replace(/mode-\S+/g, "").trim();
+  document.body.classList.add("mode-" + mode);
+  document.querySelectorAll(".mode-btn").forEach(btn => {
+    btn.classList.toggle("active", btn.dataset.mode === mode);
+  });
+  setTimeout(() => resizeCanvas(), 20);
+  if (mode === "terminal") {
+    setTimeout(() => document.getElementById("terminal-input").focus(), 50);
+  }
+}
+
+document.querySelectorAll(".mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => setMode(btn.dataset.mode));
+});
+
+// ═══════════════════════════════════════════════
+// Terminal Shell
+// ═══════════════════════════════════════════════
+
+const termOutput = document.getElementById("terminal-output");
+const termInput  = document.getElementById("terminal-input");
+const termToggle = document.getElementById("terminal-toggle");
+const termPanel  = document.getElementById("terminal-panel");
+
+const termHistory = [];
+let termHistIdx = -1;
+
+// Scenarios are now persisted via backend API (/api/scenarios)
+
+function termEsc(s) {
+  return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+function termAppend(html) {
+  const div = document.createElement("div");
+  div.className = "term-block";
+  div.innerHTML = html;
+  termOutput.appendChild(div);
+  termOutput.scrollTop = termOutput.scrollHeight;
+}
+
+function termClear() { termOutput.innerHTML = ""; }
+
+function termEcho(cmd) {
+  termAppend('<div class="term-echo">' + termEsc(cmd) + '</div>');
+}
+
+function termError(msg) {
+  termAppend('<div class="term-error">' + termEsc(msg) + '</div>');
+}
+
+function termSuccess(msg) {
+  termAppend('<div class="term-success">' + termEsc(msg) + '</div>');
+}
+
+function termText(msg) {
+  termAppend('<div class="term-text">' + termEsc(msg) + '</div>');
+}
+
+function termStatus(title, rows) {
+  let html = '<div class="term-status"><div class="term-status-title">' + termEsc(title) + '</div>';
+  for (const [k, v] of rows) {
+    html += '<div class="term-status-row"><span class="term-status-key">' + termEsc(k) + '</span><span class="term-status-val">' + termEsc(v) + '</span></div>';
+  }
+  html += '</div>';
+  termAppend(html);
+}
+
+function termCard(title, rows) {
+  let html = '<div class="term-card"><div class="term-card-title">' + termEsc(title) + '</div>';
+  for (const [k, v] of rows) {
+    html += '<div class="term-card-row"><span class="term-card-key">' + termEsc(k) + '</span><span class="term-card-val">' + termEsc(v) + '</span></div>';
+  }
+  html += '</div>';
+  termAppend(html);
+}
+
+function termTable(headers, rows) {
+  let html = '<table class="term-table"><thead><tr>';
+  for (const h of headers) html += '<th>' + termEsc(h) + '</th>';
+  html += '</tr></thead><tbody>';
+  for (const row of rows) {
+    html += '<tr>';
+    for (const cell of row) html += '<td>' + termEsc(cell) + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  termAppend(html);
+}
+
+function termSection(title) {
+  termAppend('<div class="term-section">' + termEsc(title) + '</div>');
+}
+
+function _fmtVal(v) {
+  if (v == null || v === "" || v === "—") return "—";
+  const s = String(v);
+  const n = Number(v);
+  if (!isNaN(n) && s !== "" && isFinite(n)) {
+    if (Number.isInteger(n) && Math.abs(n) < 1e15) return n.toLocaleString("en-US");
+    if (Math.abs(n) >= 1000) return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    if (Math.abs(n) < 0.01 && n !== 0) return n.toExponential(2);
+    return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
+  }
+  return s;
+}
+
+function _fmtTs(ts) {
+  if (!ts) return "—";
+  return ts.substring(0, 19).replace("T", " ");
+}
+
+function _fmtRunId(id) {
+  if (!id) return "—";
+  return '<span class="term-run-id">' + termEsc(id) + '</span>';
+}
+
+// Live progress block (replaceable)
+let _progressEl = null;
+function termProgress(current, total, detail) {
+  const pct = Math.round((current / total) * 100);
+  const barW = Math.round((current / total) * 100);
+  const html =
+    '<span class="term-progress-bar"><span class="term-progress-fill" style="width:' + barW + '%;"></span></span>' +
+    current + '/' + total + ' (' + pct + '%)' +
+    (detail ? '  ' + termEsc(detail) : '');
+  if (_progressEl && _progressEl.parentNode === termOutput) {
+    _progressEl.innerHTML = html;
+  } else {
+    _progressEl = document.createElement("div");
+    _progressEl.className = "term-block term-progress";
+    _progressEl.innerHTML = html;
+    termOutput.appendChild(_progressEl);
+  }
+  termOutput.scrollTop = termOutput.scrollHeight;
+}
+function termProgressDone() {
+  if (_progressEl && _progressEl.parentNode) {
+    _progressEl.parentNode.removeChild(_progressEl);
+  }
+  _progressEl = null;
+}
+
+// Preferred output key ordering heuristic
+const _PREFERRED_OUTPUTS = [
+  "value_per_share", "enterprise_value", "implied_upside",
+  "equity_value", "net_income", "ebitda", "free_cash_flow",
+  "irr", "npv", "total_return",
+];
+function _selectOutputKeys(allKeys, selected, cap) {
+  if (selected && selected.length > 0) {
+    return selected.filter(k => allKeys.has(k));
+  }
+  const ordered = [];
+  for (const pk of _PREFERRED_OUTPUTS) {
+    if (allKeys.has(pk)) ordered.push(pk);
+  }
+  for (const k of allKeys) {
+    if (!ordered.includes(k)) ordered.push(k);
+  }
+  return ordered.slice(0, cap || 6);
+}
+
+// Last truncatable AI content (for show full last)
+let _lastAiContent = null;
+
+const _TRUNCATE_LINES = 8;
+
+// ── Command Registry ──
+
+const CMD_REGISTRY = {};
+
+function registerCmd(name, meta) {
+  CMD_REGISTRY[name] = meta;
+}
+
+function parseCommand(input) {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  // Handle set <name> = <value> specially
+  const setMatch = trimmed.match(/^set\s+(\S+)\s*=\s*(.+)$/i);
+  if (setMatch) return { name: "set", args: [setMatch[1], setMatch[2].trim()] };
+  const parts = trimmed.split(/\s+/);
+  const name = parts[0].toLowerCase();
+  return { name, args: parts.slice(1) };
+}
+
+async function execCommand(input) {
+  const parsed = parseCommand(input);
+  if (!parsed) return;
+  termEcho(input);
+  // Check for compound command names (e.g. "scenario save", "show input")
+  const compoundName = parsed.name + (parsed.args.length ? " " + parsed.args[0].toLowerCase() : "");
+  const compound3 = compoundName + (parsed.args.length > 1 ? " " + parsed.args[1].toLowerCase() : "");
+
+  let cmd = CMD_REGISTRY[parsed.name];
+  let cmdArgs = parsed.args;
+
+  // Try compound 2-word match
+  if (CMD_REGISTRY[compoundName]) {
+    cmd = CMD_REGISTRY[compoundName];
+    cmdArgs = parsed.args.slice(1);
+  }
+
+  if (!cmd) {
+    termError("Unknown command: " + parsed.name + ". Type 'help' for available commands.");
+    return;
+  }
+  try {
+    await cmd.handler(cmdArgs);
+  } catch (err) {
+    termError("Error: " + err.message);
+  }
+}
+
+// Terminal input handling
+termInput.addEventListener("keydown", e => {
+  if (e.key === "Enter") {
+    const val = termInput.value.trim();
+    if (val) {
+      termHistory.push(val);
+      termHistIdx = termHistory.length;
+      execCommand(val);
+      termInput.value = "";
+    }
+  } else if (e.key === "ArrowUp") {
+    e.preventDefault();
+    if (termHistIdx > 0) {
+      termHistIdx--;
+      termInput.value = termHistory[termHistIdx];
+    }
+  } else if (e.key === "ArrowDown") {
+    e.preventDefault();
+    if (termHistIdx < termHistory.length - 1) {
+      termHistIdx++;
+      termInput.value = termHistory[termHistIdx];
+    } else {
+      termHistIdx = termHistory.length;
+      termInput.value = "";
+    }
+  }
+});
+
+// Terminal collapse toggle
+termToggle.addEventListener("click", () => {
+  termPanel.classList.toggle("collapsed");
+});
+
+// ── Phase 1 Commands ──
+
+registerCmd("help", {
+  description: "Show available commands or help for a specific command",
+  usage: "help [command]",
+  group: "general",
+  handler(args) {
+    if (args.length > 0) {
+      const name = args.join(" ").toLowerCase();
+      const cmd = CMD_REGISTRY[name];
+      if (!cmd) { termError("Unknown command: " + name); return; }
+      let html = '<div class="term-card">';
+      html += '<div class="term-card-title">' + termEsc(name) + '</div>';
+      html += '<div class="term-card-row"><span class="term-card-key">Usage</span><span class="term-card-val">' + termEsc(cmd.usage || name) + '</span></div>';
+      html += '<div class="term-card-row"><span class="term-card-key">Description</span><span class="term-card-val">' + termEsc(cmd.description) + '</span></div>';
+      html += '</div>';
+      termAppend(html);
+      return;
+    }
+    const groups = {};
+    for (const [name, cmd] of Object.entries(CMD_REGISTRY)) {
+      if (cmd.hidden) continue;
+      const g = cmd.group || "other";
+      if (!groups[g]) groups[g] = [];
+      groups[g].push([name, cmd.description]);
+    }
+    const order = ["general", "inspect", "runner", "scenario", "sweep", "ai", "draft"];
+    let html = '';
+    for (const g of order) {
+      if (!groups[g]) continue;
+      html += '<div class="term-help-group"><div class="term-help-group-title">' + termEsc(g) + '</div>';
+      for (const [n, d] of groups[g]) {
+        html += '<div class="term-help-row"><span class="term-help-cmd">' + termEsc(n) + '</span><span class="term-help-desc">' + termEsc(d) + '</span></div>';
+      }
+      html += '</div>';
+    }
+    termAppend(html);
+  }
+});
+
+registerCmd("clear", {
+  description: "Clear terminal output",
+  usage: "clear",
+  group: "general",
+  handler() { termClear(); }
+});
+
+registerCmd("mode", {
+  description: "Show or switch the current UI mode",
+  usage: "mode [spreadsheet|system|terminal]",
+  group: "general",
+  handler(args) {
+    if (args.length > 0) {
+      const m = args[0].toLowerCase();
+      if (["spreadsheet", "system", "terminal"].includes(m)) {
+        setMode(m);
+        termSuccess("Switched to " + m + " mode");
+      } else {
+        termError("Unknown mode: " + m + ". Options: spreadsheet, system, terminal");
+      }
+      return;
+    }
+    termStatus("Current Mode", [["mode", S.uiMode]]);
+  }
+});
+
+registerCmd("status", {
+  description: "Show workbook and session status",
+  usage: "status",
+  group: "inspect",
+  async handler() {
+    try {
+      const info = await api("GET", "/project");
+      const rows = [
+        ["project", info.project_dir || "unknown"],
+        ["dirty", info.dirty ? "uncommitted" : "committed"],
+        ["snapshot", info.snapshot_version || "none"],
+        ["last build", info.last_run_id || "none"],
+        ["active sheet", S.activeSheet],
+        ["sheets", (info.sheets || []).join(", ")],
+        ["mode", S.uiMode],
+      ];
+      if (info.mode) rows.push(["project mode", info.mode]);
+      termStatus("Workbook Status", rows);
+    } catch (err) { termError("Failed to load status: " + err.message); }
+  }
+});
+
+registerCmd("inputs", {
+  description: "List editable workbook parameters/inputs",
+  usage: "inputs",
+  group: "inspect",
+  async handler() {
+    try {
+      const info = await api("GET", "/project");
+      const params = info.params || {};
+      const keys = Object.keys(params);
+      if (keys.length === 0) {
+        termText("No parameters defined in workbook.");
+        return;
+      }
+      const rows = keys.map(k => [k, String(params[k])]);
+      termTable(["Parameter", "Value"], rows);
+    } catch (err) { termError("Failed to load inputs: " + err.message); }
+  }
+});
+
+registerCmd("outputs", {
+  description: "List key output scalars from the latest build",
+  usage: "outputs",
+  group: "inspect",
+  async handler() {
+    try {
+      const data = await api("GET", "/outputs/scalars");
+      const scalars = data.scalars || {};
+      const keys = Object.keys(scalars);
+      if (keys.length === 0) {
+        termText("No outputs available. Use 'commit' to build first.");
+        return;
+      }
+      const rows = keys.map(k => [k, String(scalars[k])]);
+      termTable(["Output", "Value"], rows);
+    } catch (err) { termError("Failed to load outputs: " + err.message); }
+  }
+});
+
+registerCmd("show input", {
+  description: "Show value and metadata for a named input parameter",
+  usage: "show input <name>",
+  group: "inspect",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: show input <name>"); return; }
+    const name = args[0];
+    try {
+      const info = await api("GET", "/project");
+      const params = info.params || {};
+      if (!(name in params)) {
+        termError("Input '" + name + "' not found. Use 'inputs' to list available parameters.");
+        return;
+      }
+      const val = params[name];
+      const rows = [
+        ["name", name],
+        ["value", String(val)],
+        ["type", typeof val],
+      ];
+      termCard("Input: " + name, rows);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("show output", {
+  description: "Show value and metadata for a named output scalar",
+  usage: "show output <name>",
+  group: "inspect",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: show output <name>"); return; }
+    const name = args[0];
+    try {
+      const data = await api("GET", "/outputs/scalars");
+      const scalars = data.scalars || {};
+      if (!(name in scalars)) {
+        termError("Output '" + name + "' not found. Use 'outputs' to list available outputs.");
+        return;
+      }
+      const val = scalars[name];
+      const rows = [
+        ["name", name],
+        ["value", String(val)],
+        ["type", typeof val],
+      ];
+      if (data.run_id) rows.push(["run_id", data.run_id]);
+      termCard("Output: " + name, rows);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+// ── Runner Commands ──
+
+registerCmd("set", {
+  description: "Set a named input parameter value",
+  usage: "set <name> = <value>",
+  group: "runner",
+  async handler(args) {
+    if (args.length < 2) { termError("Usage: set <name> = <value>"); return; }
+    const name = args[0];
+    const rawVal = args[1];
+    try {
+      const res = await api("POST", "/params/update", { name, value: rawVal });
+      await loadSheet();
+      draw();
+      S.dirty = res.dirty;
+      updateStatus();
+      termStatus("Set Parameter", [
+        ["parameter", name],
+        ["old value", String(res.old_value)],
+        ["new value", String(res.new_value)],
+        ["state", "uncommitted"],
+      ]);
+    } catch (err) { termError("Failed to set: " + err.message); }
+  }
+});
+
+registerCmd("reset", {
+  description: "Reset a parameter to its workbook default",
+  usage: "reset <name>",
+  group: "runner",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: reset <name>"); return; }
+    const name = args[0];
+    try {
+      const info = await api("GET", "/project");
+      const params = info.params || {};
+      if (!(name in params)) {
+        termError("'" + name + "' is not a parameter. Use 'inputs' to list parameters.");
+        return;
+      }
+      termText("'" + name + "' current default: " + params[name] + ". To restore, use: set " + name + " = " + params[name]);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+// Helper: commit + build the workbook, return structured result
+async function _doCommitBuild() {
+  // If dirty, save snapshot first
+  if (S.dirty) {
+    const cres = await api("POST", "/commit");
+    S.dirty = false;
+    S.snapVer = cres.snapshot_version;
+    updateStatus();
+  }
+
+  const res = await api("POST", "/build");
+  S.lastRunId = res.run_id;
+  updateStatus();
+  loadScalars();
+  loadRuns();
+  loadChecks(res.run_id);
+  loadIncidents(res.run_id);
+  loadLogs();
+  loadStatus();
+
+  const scalars = await api("GET", "/outputs/scalars");
+  const scalarData = scalars.scalars || {};
+  const tableInfo = res.tables || {};
+  const nScalars = Object.keys(scalarData).length;
+  const nTables = Object.keys(tableInfo).length;
+
+  return {
+    run_id: res.run_id,
+    snapshot: res.snapshot_version || S.snapVer,
+    scalars: scalarData,
+    n_scalars: nScalars,
+    n_tables: nTables,
+    timestamp: new Date().toISOString(),
+  };
+}
+
+registerCmd("commit", {
+  description: "Persist current state and build the workbook (primary deterministic action)",
+  usage: "commit [--name <scenario_name>]",
+  group: "runner",
+  async handler(args) {
+    // Parse --name flag
+    let scenarioName = null;
+    for (let i = 0; i < args.length; i++) {
+      if (args[i] === "--name" && i + 1 < args.length) {
+        scenarioName = args[i + 1];
+        i++;
+      }
+    }
+
+    termText("Committing...");
+    try {
+      const result = await _doCommitBuild();
+
+      termStatus("COMMIT", [
+        ["status", "success"],
+        ["build id", result.run_id],
+        ["snapshot", result.snapshot || "—"],
+        ["timestamp", result.timestamp],
+        ["outputs updated", result.n_scalars + " scalars, " + result.n_tables + " tables"],
+      ]);
+
+      if (result.n_scalars > 0) {
+        const rows = Object.entries(result.scalars).map(([k, v]) => [k, String(v)]);
+        termTable(["Output", "Value"], rows);
+      }
+
+      // If --name was given, persist as scenario
+      if (scenarioName) {
+        const info = await api("GET", "/project");
+        await api("POST", "/scenarios", {
+          name: scenarioName,
+          inputs: info.params || {},
+          outputs: result.scalars,
+          run_id: result.run_id,
+        });
+        termSuccess("Saved as scenario: " + scenarioName);
+      }
+    } catch (err) { termError("Commit error: " + err.message); }
+  }
+});
+
+// Hidden backward-compatible alias for `run`
+registerCmd("run", {
+  description: "Alias for commit (deprecated — use 'commit' instead)",
+  usage: "run [--name <scenario_name>]",
+  group: "runner",
+  hidden: true,
+  async handler(args) {
+    termText("Note: 'run' is deprecated. Use 'commit' instead.");
+    await CMD_REGISTRY["commit"].handler(args);
+  }
+});
+
+// ── Scenario Commands (persistent) ──
+
+registerCmd("scenario save", {
+  description: "Save current inputs and outputs as a persistent named scenario",
+  usage: "scenario save <name>",
+  group: "scenario",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: scenario save <name>"); return; }
+    const name = args[0];
+    try {
+      const info = await api("GET", "/project");
+      const params = info.params || {};
+      let outputs = {};
+      try {
+        const data = await api("GET", "/outputs/scalars");
+        outputs = data.scalars || {};
+      } catch (_) {}
+      await api("POST", "/scenarios", {
+        name,
+        inputs: params,
+        outputs,
+        run_id: S.lastRunId,
+      });
+      termStatus("Scenario Saved", [
+        ["name", name],
+        ["inputs", Object.keys(params).length + " parameters"],
+        ["outputs", Object.keys(outputs).length + " scalars"],
+        ["build id", S.lastRunId || "—"],
+      ]);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("scenario load", {
+  description: "Load a saved scenario's inputs into the workbook",
+  usage: "scenario load <name>",
+  group: "scenario",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: scenario load <name>"); return; }
+    const name = args[0];
+    try {
+      const sc = await api("GET", "/scenarios/" + encodeURIComponent(name));
+      termText("Loading scenario '" + name + "'...");
+      const info = await api("GET", "/project");
+      const currentParams = info.params || {};
+      let changed = 0;
+
+      for (const [k, v] of Object.entries(sc.inputs || {})) {
+        if (k in currentParams && String(currentParams[k]) !== String(v)) {
+          try {
+            await api("POST", "/params/update", { name: k, value: v });
+            changed++;
+          } catch (_) {}
+        }
+      }
+      S.dirty = true;
+      updateStatus();
+      await loadSheet();
+      draw();
+      termStatus("Scenario Loaded", [
+        ["scenario", name],
+        ["linked build", sc.run_id || "—"],
+        ["parameters applied", String(changed)],
+        ["state", "uncommitted — run 'commit' to build"],
+      ]);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("scenario list", {
+  description: "List all saved scenarios",
+  usage: "scenario list",
+  group: "scenario",
+  async handler() {
+    try {
+      const scenarios = await api("GET", "/scenarios");
+      if (scenarios.length === 0) {
+        termText("No scenarios saved. Use 'scenario save <name>' to save one.");
+        return;
+      }
+      termSection("Saved Scenarios (" + scenarios.length + ")");
+      let html = '<table class="term-table"><thead><tr>';
+      html += '<th>Scenario</th><th>Updated</th><th>Build ID</th><th>Key Outputs</th>';
+      html += '</tr></thead><tbody>';
+      for (const sc of scenarios) {
+        const outs = sc.outputs || {};
+        const outKeys = Object.keys(outs);
+        const preview = outKeys.slice(0, 2).map(k => k + "=" + _fmtVal(outs[k])).join(", ");
+        const more = outKeys.length > 2 ? " +" + (outKeys.length - 2) + " more" : "";
+        html += '<tr>';
+        html += '<td><span class="term-scenario-badge">' + termEsc(sc.name) + '</span></td>';
+        html += '<td>' + termEsc(_fmtTs(sc.updated_at || sc.created_at)) + '</td>';
+        html += '<td>' + _fmtRunId(sc.run_id) + '</td>';
+        html += '<td style="color:var(--fg-dim);font-size:9px;">' + termEsc(preview + more) + '</td>';
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+      termAppend(html);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("scenario show", {
+  description: "Show details for a saved scenario",
+  usage: "scenario show <name>",
+  group: "scenario",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: scenario show <name>"); return; }
+    const name = args[0];
+    try {
+      const sc = await api("GET", "/scenarios/" + encodeURIComponent(name));
+      // Identity card
+      let html = '<div class="term-card">';
+      html += '<div class="term-card-title"><span class="term-scenario-badge">' + termEsc(sc.name) + '</span></div>';
+      html += '<div class="term-card-row"><span class="term-card-key">created</span><span class="term-card-val">' + termEsc(_fmtTs(sc.created_at)) + '</span></div>';
+      html += '<div class="term-card-row"><span class="term-card-key">updated</span><span class="term-card-val">' + termEsc(_fmtTs(sc.updated_at)) + '</span></div>';
+      html += '<div class="term-card-row"><span class="term-card-key">build id</span><span class="term-card-val">' + _fmtRunId(sc.run_id) + '</span></div>';
+      if (sc.notes) html += '<div class="term-card-row"><span class="term-card-key">notes</span><span class="term-card-val">' + termEsc(sc.notes) + '</span></div>';
+      html += '</div>';
+      termAppend(html);
+
+      // Inputs section
+      const inputs = sc.inputs || {};
+      const inKeys = Object.keys(inputs);
+      if (inKeys.length > 0) {
+        termSection("Inputs (" + inKeys.length + ")");
+        let thtml = '<table class="term-table"><thead><tr><th>Parameter</th><th style="text-align:right;">Value</th></tr></thead><tbody>';
+        for (const k of inKeys) {
+          thtml += '<tr><td>' + termEsc(k) + '</td><td class="num-cell" style="text-align:right;">' + termEsc(_fmtVal(inputs[k])) + '</td></tr>';
+        }
+        thtml += '</tbody></table>';
+        termAppend(thtml);
+      }
+
+      // Outputs section
+      const outputs = sc.outputs || {};
+      const outKeys = Object.keys(outputs);
+      if (outKeys.length > 0) {
+        termSection("Outputs (" + outKeys.length + ")");
+        let thtml = '<table class="term-table"><thead><tr><th>Output</th><th style="text-align:right;">Value</th></tr></thead><tbody>';
+        for (const k of outKeys) {
+          thtml += '<tr><td>' + termEsc(k) + '</td><td class="num-cell" style="text-align:right;">' + termEsc(_fmtVal(outputs[k])) + '</td></tr>';
+        }
+        thtml += '</tbody></table>';
+        termAppend(thtml);
+      }
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("scenario delete", {
+  description: "Delete a saved scenario",
+  usage: "scenario delete <name>",
+  group: "scenario",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: scenario delete <name>"); return; }
+    const name = args[0];
+    try {
+      await api("DELETE", "/scenarios/" + encodeURIComponent(name));
+      termSuccess("Scenario '" + name + "' deleted.");
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("compare", {
+  description: "Compare two saved scenarios (inputs and outputs)",
+  usage: "compare <scenario_a> <scenario_b>",
+  group: "scenario",
+  async handler(args) {
+    if (args.length < 2) { termError("Usage: compare <scenario_a> <scenario_b>"); return; }
+    const nameA = args[0], nameB = args[1];
+    let scA, scB;
+    try { scA = await api("GET", "/scenarios/" + encodeURIComponent(nameA)); }
+    catch (_) { termError("Scenario '" + nameA + "' not found."); return; }
+    try { scB = await api("GET", "/scenarios/" + encodeURIComponent(nameB)); }
+    catch (_) { termError("Scenario '" + nameB + "' not found."); return; }
+
+    // Input diffs
+    const allInputKeys = new Set([...Object.keys(scA.inputs || {}), ...Object.keys(scB.inputs || {})]);
+    const inputDiffs = [];
+    for (const k of allInputKeys) {
+      const a = (scA.inputs || {})[k];
+      const b = (scB.inputs || {})[k];
+      if (String(a ?? "—") !== String(b ?? "—")) inputDiffs.push([k, a, b]);
+    }
+
+    // Output diffs
+    const allOutputKeys = new Set([...Object.keys(scA.outputs || {}), ...Object.keys(scB.outputs || {})]);
+    const outputDiffs = [];
+    for (const k of allOutputKeys) {
+      const a = (scA.outputs || {})[k];
+      const b = (scB.outputs || {})[k];
+      if (String(a ?? "—") !== String(b ?? "—")) outputDiffs.push([k, a, b]);
+    }
+
+    // Build structured compare output
+    let html = '<div class="term-compare">';
+
+    // Header
+    html += '<div class="term-compare-header">';
+    html += '<span class="term-compare-title">COMPARE</span>';
+    html += '<span class="term-scenario-badge">' + termEsc(nameA) + '</span>';
+    html += '<span class="term-compare-meta">vs</span>';
+    html += '<span class="term-scenario-badge">' + termEsc(nameB) + '</span>';
+    if (scA.run_id || scB.run_id) {
+      html += '<span class="term-compare-meta" style="margin-left:auto;">' +
+        (scA.run_id ? termEsc(scA.run_id.substring(0, 15)) : "—") + ' → ' +
+        (scB.run_id ? termEsc(scB.run_id.substring(0, 15)) : "—") + '</span>';
+    }
+    html += '</div>';
+
+    // Inputs changed
+    html += '<div class="term-compare-section">';
+    html += '<div class="term-compare-section-title">Inputs Changed (' + inputDiffs.length + ')</div>';
+    if (inputDiffs.length > 0) {
+      html += '<table class="term-diff-table"><thead><tr><th>Parameter</th><th>' + termEsc(nameA) + '</th><th></th><th>' + termEsc(nameB) + '</th></tr></thead><tbody>';
+      for (const [k, a, b] of inputDiffs) {
+        html += '<tr><td>' + termEsc(k) + '</td>';
+        html += '<td class="val-old">' + termEsc(_fmtVal(a)) + '</td>';
+        html += '<td class="val-arrow">→</td>';
+        html += '<td class="val-new">' + termEsc(_fmtVal(b)) + '</td></tr>';
+      }
+      html += '</tbody></table>';
+    } else {
+      html += '<div class="term-no-diff">No differences</div>';
+    }
+    html += '</div>';
+
+    // Outputs changed
+    html += '<div class="term-compare-section">';
+    html += '<div class="term-compare-section-title">Outputs Changed (' + outputDiffs.length + ')</div>';
+    if (outputDiffs.length > 0) {
+      html += '<table class="term-diff-table"><thead><tr><th>Output</th><th>' + termEsc(nameA) + '</th><th></th><th>' + termEsc(nameB) + '</th></tr></thead><tbody>';
+      for (const [k, a, b] of outputDiffs) {
+        html += '<tr><td>' + termEsc(k) + '</td>';
+        html += '<td class="val-old">' + termEsc(_fmtVal(a)) + '</td>';
+        html += '<td class="val-arrow">→</td>';
+        html += '<td class="val-new">' + termEsc(_fmtVal(b)) + '</td></tr>';
+      }
+      html += '</tbody></table>';
+    } else {
+      html += '<div class="term-no-diff">No differences</div>';
+    }
+    html += '</div>';
+
+    // Summary
+    const totalInputs = allInputKeys.size;
+    const unchangedInputs = totalInputs - inputDiffs.length;
+    if (unchangedInputs > 0) {
+      html += '<div class="term-compare-meta" style="padding-top:4px;">' + unchangedInputs + ' input(s) unchanged</div>';
+    }
+
+    html += '</div>';
+    termAppend(html);
+  }
+});
+
+// ── Sweep Commands ──
+
+function _parseRange(token) {
+  // Parse range(start, stop, step) → array of numbers
+  const m = token.match(/^range\(\s*([^,]+),\s*([^,]+),\s*([^)]+)\s*\)$/);
+  if (!m) return null;
+  const start = parseFloat(m[1]);
+  const stop = parseFloat(m[2]);
+  const step = parseFloat(m[3]);
+  if (isNaN(start) || isNaN(stop) || isNaN(step) || step === 0) return null;
+  if ((step > 0 && start > stop) || (step < 0 && start < stop)) return null;
+  const vals = [];
+  // Inclusive of endpoints: iterate while value <= stop (for positive step)
+  for (let v = start; step > 0 ? v <= stop + step * 1e-9 : v >= stop + step * 1e-9; v += step) {
+    vals.push(Math.round(v * 1e10) / 1e10); // avoid floating point drift
+    if (vals.length > 200) break; // safety limit
+  }
+  return vals;
+}
+
+registerCmd("sweep", {
+  description: "Run a one-dimensional parameter sweep using the deterministic pipeline",
+  usage: "sweep <input> <v1> <v2> ... [--outputs key1 key2] | sweep <input> range(start, stop, step)",
+  group: "sweep",
+  async handler(args) {
+    if (args.length < 2) {
+      termError("Usage: sweep <input> <v1> <v2> ... [--outputs key1 key2]");
+      return;
+    }
+    const inputName = args[0];
+
+    // Parse --outputs flag
+    let selectedOutputs = null;
+    let valueArgs = args.slice(1);
+    const outputsIdx = valueArgs.indexOf("--outputs");
+    if (outputsIdx >= 0) {
+      selectedOutputs = valueArgs.slice(outputsIdx + 1);
+      valueArgs = valueArgs.slice(0, outputsIdx);
+    }
+
+    // Parse values
+    let values;
+    const rest = valueArgs.join(" ");
+    const rangeVals = _parseRange(rest);
+    if (rangeVals) {
+      values = rangeVals;
+    } else {
+      values = valueArgs.map(v => {
+        const n = parseFloat(v);
+        return isNaN(n) ? v : n;
+      });
+    }
+
+    if (values.length === 0) { termError("No sweep values provided."); return; }
+
+    try {
+      const info = await api("GET", "/project");
+      const params = info.params || {};
+      if (!(inputName in params)) {
+        termError("'" + inputName + "' is not a declared parameter. Use 'inputs' to list parameters.");
+        return;
+      }
+      const originalValue = params[inputName];
+      const t0 = performance.now();
+
+      // Start block
+      termStatus("SWEEP STARTED", [
+        ["parameter", inputName],
+        ["points", String(values.length)],
+        ["range", _fmtVal(values[0]) + " → " + _fmtVal(values[values.length - 1])],
+        ...(selectedOutputs ? [["outputs", selectedOutputs.join(", ")]] : []),
+      ]);
+
+      const results = [];
+      let allOutputKeys = new Set();
+
+      for (let i = 0; i < values.length; i++) {
+        const val = values[i];
+        termProgress(i, values.length, inputName + " = " + _fmtVal(val));
+        try {
+          await api("POST", "/params/update", { name: inputName, value: val });
+          const buildResult = await _doCommitBuild();
+          for (const k of Object.keys(buildResult.scalars)) allOutputKeys.add(k);
+          results.push({
+            value: val,
+            outputs: buildResult.scalars,
+            run_id: buildResult.run_id,
+            status: "success",
+          });
+        } catch (err) {
+          results.push({
+            value: val,
+            outputs: {},
+            run_id: null,
+            status: "error",
+            error: err.message,
+          });
+        }
+      }
+      termProgressDone();
+
+      // Restore
+      try {
+        await api("POST", "/params/update", { name: inputName, value: originalValue });
+        await loadSheet();
+        draw();
+      } catch (_) {}
+
+      const durationMs = Math.round(performance.now() - t0);
+      const successes = results.filter(r => r.status === "success").length;
+      const failures = results.length - successes;
+      const outputKeys = _selectOutputKeys(allOutputKeys, selectedOutputs, 6);
+
+      // Result table
+      termSection("Results");
+      _renderSweepTable(inputName, outputKeys, results);
+
+      // Persist
+      const sweepId = "sweep_" + inputName + "_" + Date.now();
+      const sweepData = {
+        sweep_id: sweepId,
+        input: inputName,
+        values: values,
+        results: results,
+        output_keys: Array.from(allOutputKeys),
+        selected_outputs: selectedOutputs,
+        created_at: new Date().toISOString(),
+        duration_ms: durationMs,
+        success_count: successes,
+        failure_count: failures,
+      };
+      try {
+        await api("POST", "/sweeps", { sweep_id: sweepId, data: sweepData });
+      } catch (_) {}
+
+      // Completion block
+      const statusLabel = failures > 0 ? "SWEEP COMPLETE WITH ERRORS" : "SWEEP COMPLETE";
+      const rows = [
+        ["sweep id", sweepId],
+        ["points", successes + " succeeded" + (failures ? ", " + failures + " failed" : "")],
+        ["duration", (durationMs / 1000).toFixed(1) + "s"],
+      ];
+      if (failures > 0) {
+        const failedVals = results.filter(r => r.status !== "success").map(r => _fmtVal(r.value)).join(", ");
+        rows.push(["failed values", failedVals]);
+      }
+      termStatus(statusLabel, rows);
+      termText("show sweep " + sweepId + "  |  export sweep " + sweepId);
+
+    } catch (err) { termError("Sweep error: " + err.message); }
+  }
+});
+
+// Shared sweep table renderer
+function _renderSweepTable(inputName, outputKeys, results) {
+  let html = '<table class="term-table"><thead><tr>';
+  html += '<th>' + termEsc(inputName) + '</th>';
+  for (const k of outputKeys) html += '<th style="text-align:right;">' + termEsc(k) + '</th>';
+  html += '<th>Build ID</th></tr></thead><tbody>';
+  for (const r of results) {
+    const failed = r.status !== "success";
+    html += '<tr>';
+    html += '<td style="font-weight:500;">' + termEsc(_fmtVal(r.value)) + '</td>';
+    for (const k of outputKeys) {
+      const v = (r.outputs || {})[k];
+      html += '<td class="num-cell" style="text-align:right;">' + (failed ? '<span style="color:var(--error);">—</span>' : termEsc(_fmtVal(v))) + '</td>';
+    }
+    html += '<td>' + (r.run_id ? _fmtRunId(r.run_id) : '<span style="color:var(--error);">' + termEsc(r.status || "error") + '</span>') + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  termAppend(html);
+}
+
+registerCmd("sweeps", {
+  description: "List saved sweep results",
+  usage: "sweeps",
+  group: "sweep",
+  async handler() {
+    try {
+      const list = await api("GET", "/sweeps");
+      if (list.length === 0) {
+        termText("No sweeps saved. Use 'sweep <input> <values...>' to run one.");
+        return;
+      }
+      termSection("Saved Sweeps (" + list.length + ")");
+      let html = '<table class="term-table"><thead><tr>';
+      html += '<th>Sweep ID</th><th>Parameter</th><th>Points</th><th>Created</th>';
+      html += '</tr></thead><tbody>';
+      for (const s of list) {
+        html += '<tr>';
+        html += '<td style="font-weight:500;color:var(--fg);">' + termEsc(s.sweep_id) + '</td>';
+        html += '<td>' + termEsc(s.input || "—") + '</td>';
+        html += '<td class="num-cell">' + (s.points || 0) + '</td>';
+        html += '<td>' + termEsc(_fmtTs(s.created_at)) + '</td>';
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+      termAppend(html);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("show sweep", {
+  description: "Show a saved sweep result",
+  usage: "show sweep <id>",
+  group: "sweep",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: show sweep <id>"); return; }
+    const id = args[0];
+    try {
+      const data = await api("GET", "/sweeps/" + encodeURIComponent(id));
+      const results = data.results || [];
+      const outputKeys = data.output_keys || [];
+
+      // Identity card
+      termCard("Sweep: " + (data.sweep_id || id), [
+        ["parameter", data.input || "—"],
+        ["points", String(results.length)],
+        ["range", results.length ? _fmtVal(results[0].value) + " → " + _fmtVal(results[results.length - 1].value) : "—"],
+        ["created", _fmtTs(data.created_at)],
+        ["status", results.every(r => r.status === "success") ? "all succeeded" : "some errors"],
+      ]);
+
+      // Result table (cap displayed outputs at 8)
+      let displayKeys = outputKeys;
+      if (displayKeys.length > 8) {
+        displayKeys = displayKeys.slice(0, 8);
+        termText("Showing " + displayKeys.length + " of " + outputKeys.length + " outputs. Use 'export sweep " + id + "' for full data.");
+      }
+
+      termSection("Results");
+      _renderSweepTable(data.input || "input", displayKeys, results);
+
+      termText("Export: export sweep " + (data.sweep_id || id));
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("export sweep", {
+  description: "Export a sweep result to CSV",
+  usage: "export sweep <id>",
+  group: "sweep",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: export sweep <id>"); return; }
+    const id = args[0];
+    try {
+      const url = "/api/sweeps/" + encodeURIComponent(id) + "/csv";
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        const text = await resp.text();
+        termError("Export failed: " + text);
+        return;
+      }
+      const blob = await resp.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = id + ".csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      termStatus("Export Complete", [
+        ["file", id + ".csv"],
+        ["size", (blob.size / 1024).toFixed(1) + " KB"],
+        ["format", "CSV (all outputs included)"],
+      ]);
+    } catch (err) { termError("Export failed: " + err.message); }
+  }
+});
+
+// ── Grid Commands ──
+
+const _GRID_MAX_CELLS = 100;
+
+function _renderGridMatrix(inputX, valuesX, inputY, valuesY, cells, displayOutput) {
+  // Build lookup: "x|y" → display_value
+  const lookup = {};
+  for (const c of cells) {
+    lookup[c.x + "|" + c.y] = c;
+  }
+
+  let html = '<table class="term-grid-matrix"><thead><tr>';
+  html += '<th>' + termEsc(inputX) + ' \\ ' + termEsc(inputY) + '</th>';
+  for (const y of valuesY) html += '<th>' + termEsc(_fmtVal(y)) + '</th>';
+  html += '</tr></thead><tbody>';
+  for (const x of valuesX) {
+    html += '<tr><td>' + termEsc(_fmtVal(x)) + '</td>';
+    for (const y of valuesY) {
+      const c = lookup[x + "|" + y];
+      if (!c || c.status !== "success") {
+        html += '<td class="grid-err">ERR</td>';
+      } else {
+        html += '<td>' + termEsc(_fmtVal(c.display_value)) + '</td>';
+      }
+    }
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  termAppend(html);
+}
+
+registerCmd("grid", {
+  description: "Run a 2D parameter grid sweep with one displayed output",
+  usage: "grid <inputX> <valsX...> vs <inputY> <valsY...> --output <name>",
+  group: "sweep",
+  async handler(args) {
+    // Parse: <inputX> <vals...> vs <inputY> <vals...> --output <name>
+    const vsIdx = args.indexOf("vs");
+    if (vsIdx < 2) {
+      termError("Usage: grid <inputX> <valsX...> vs <inputY> <valsY...> --output <name>");
+      return;
+    }
+
+    const inputX = args[0];
+    let xArgs = args.slice(1, vsIdx);
+    let yArgs = args.slice(vsIdx + 1);
+
+    // Parse --output flag from yArgs
+    const outIdx = yArgs.indexOf("--output");
+    if (outIdx < 0 || outIdx >= yArgs.length - 1) {
+      termError("--output <name> is required. Example: grid revenue_growth 0.04 0.08 vs wacc 0.08 0.10 --output value_per_share");
+      return;
+    }
+    const displayOutput = yArgs[outIdx + 1];
+    const inputY = yArgs[0];
+    let yValArgs = yArgs.slice(1, outIdx);
+
+    // Parse X values
+    let valuesX;
+    const xRest = xArgs.join(" ");
+    const xRange = _parseRange(xRest);
+    valuesX = xRange || xArgs.map(v => { const n = parseFloat(v); return isNaN(n) ? v : n; });
+
+    // Parse Y values
+    let valuesY;
+    const yRest = yValArgs.join(" ");
+    const yRange = _parseRange(yRest);
+    valuesY = yRange || yValArgs.map(v => { const n = parseFloat(v); return isNaN(n) ? v : n; });
+
+    if (valuesX.length === 0 || valuesY.length === 0) {
+      termError("Both axes need at least one value.");
+      return;
+    }
+
+    const totalCells = valuesX.length * valuesY.length;
+    if (totalCells > _GRID_MAX_CELLS) {
+      termError("Grid too large: " + totalCells + " cells exceeds maximum of " + _GRID_MAX_CELLS + ". Reduce values.");
+      return;
+    }
+
+    try {
+      const info = await api("GET", "/project");
+      const params = info.params || {};
+      if (!(inputX in params)) { termError("'" + inputX + "' is not a declared parameter."); return; }
+      if (!(inputY in params)) { termError("'" + inputY + "' is not a declared parameter."); return; }
+      if (inputX === inputY) { termError("X and Y inputs must be different parameters."); return; }
+      const origX = params[inputX];
+      const origY = params[inputY];
+      const t0 = performance.now();
+
+      // Start block
+      termStatus("GRID STARTED", [
+        ["X", inputX + " (" + valuesX.length + " values)"],
+        ["Y", inputY + " (" + valuesY.length + " values)"],
+        ["output", displayOutput],
+        ["points", String(totalCells)],
+      ]);
+
+      const cells = [];
+      let done = 0;
+
+      for (const x of valuesX) {
+        for (const y of valuesY) {
+          done++;
+          termProgress(done, totalCells, inputX + "=" + _fmtVal(x) + ", " + inputY + "=" + _fmtVal(y));
+          try {
+            await api("POST", "/params/update", { name: inputX, value: x });
+            await api("POST", "/params/update", { name: inputY, value: y });
+            const buildResult = await _doCommitBuild();
+            const dispVal = buildResult.scalars[displayOutput];
+            cells.push({
+              x: x, y: y,
+              run_id: buildResult.run_id,
+              status: "success",
+              display_value: dispVal != null ? dispVal : null,
+              outputs: buildResult.scalars,
+            });
+          } catch (err) {
+            cells.push({
+              x: x, y: y,
+              run_id: null,
+              status: "error",
+              display_value: null,
+              error: err.message,
+            });
+          }
+        }
+      }
+      termProgressDone();
+
+      // Restore
+      try {
+        await api("POST", "/params/update", { name: inputX, value: origX });
+        await api("POST", "/params/update", { name: inputY, value: origY });
+        await loadSheet();
+        draw();
+      } catch (_) {}
+
+      const durationMs = Math.round(performance.now() - t0);
+      const successes = cells.filter(c => c.status === "success").length;
+      const failures = cells.length - successes;
+
+      // Matrix render
+      termSection(displayOutput);
+      _renderGridMatrix(inputX, valuesX, inputY, valuesY, cells, displayOutput);
+
+      // Persist
+      const gridId = "grid_" + inputX + "_" + inputY + "_" + Date.now();
+      const gridData = {
+        grid_id: gridId,
+        input_x: inputX,
+        values_x: valuesX,
+        input_y: inputY,
+        values_y: valuesY,
+        display_output: displayOutput,
+        cells: cells,
+        created_at: new Date().toISOString(),
+        duration_ms: durationMs,
+        success_count: successes,
+        failure_count: failures,
+      };
+      try {
+        await api("POST", "/grids", { grid_id: gridId, data: gridData });
+      } catch (_) {}
+
+      // Completion
+      const statusLabel = failures > 0 ? "GRID COMPLETE WITH ERRORS" : "GRID COMPLETE";
+      termStatus(statusLabel, [
+        ["grid id", gridId],
+        ["points", successes + " succeeded" + (failures ? ", " + failures + " failed" : "")],
+        ["duration", (durationMs / 1000).toFixed(1) + "s"],
+        ["output", displayOutput],
+      ]);
+      termText("show grid " + gridId + "  |  export grid " + gridId);
+
+    } catch (err) { termError("Grid error: " + err.message); }
+  }
+});
+
+registerCmd("grids", {
+  description: "List saved grid sweep results",
+  usage: "grids",
+  group: "sweep",
+  async handler() {
+    try {
+      const list = await api("GET", "/grids");
+      if (list.length === 0) {
+        termText("No grids saved. Use 'grid <inputX> <valsX> vs <inputY> <valsY> --output <name>' to run one.");
+        return;
+      }
+      termSection("Saved Grids (" + list.length + ")");
+      let html = '<table class="term-table"><thead><tr>';
+      html += '<th>Grid ID</th><th>X</th><th>Y</th><th>Output</th><th>Points</th><th>Created</th>';
+      html += '</tr></thead><tbody>';
+      for (const g of list) {
+        html += '<tr>';
+        html += '<td style="font-weight:500;color:var(--fg);">' + termEsc(g.grid_id) + '</td>';
+        html += '<td>' + termEsc(g.input_x || "—") + '</td>';
+        html += '<td>' + termEsc(g.input_y || "—") + '</td>';
+        html += '<td>' + termEsc(g.display_output || "—") + '</td>';
+        html += '<td class="num-cell">' + (g.points || 0) + '</td>';
+        html += '<td>' + termEsc(_fmtTs(g.created_at)) + '</td>';
+        html += '</tr>';
+      }
+      html += '</tbody></table>';
+      termAppend(html);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("show grid", {
+  description: "Show a saved grid result",
+  usage: "show grid <id>",
+  group: "sweep",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: show grid <id>"); return; }
+    const id = args[0];
+    try {
+      const data = await api("GET", "/grids/" + encodeURIComponent(id));
+      const cells = data.cells || [];
+      const successes = cells.filter(c => c.status === "success").length;
+      const failures = cells.length - successes;
+
+      termCard("Grid: " + (data.grid_id || id), [
+        ["X", (data.input_x || "—") + " (" + (data.values_x || []).length + " values)"],
+        ["Y", (data.input_y || "—") + " (" + (data.values_y || []).length + " values)"],
+        ["output", data.display_output || "—"],
+        ["points", successes + " succeeded" + (failures ? ", " + failures + " failed" : "")],
+        ["created", _fmtTs(data.created_at)],
+      ]);
+
+      termSection(data.display_output || "Results");
+      _renderGridMatrix(data.input_x, data.values_x || [], data.input_y, data.values_y || [], cells, data.display_output);
+
+      termText("Export: export grid " + (data.grid_id || id));
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("export grid", {
+  description: "Export a grid result to CSV",
+  usage: "export grid <id>",
+  group: "sweep",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: export grid <id>"); return; }
+    const id = args[0];
+    try {
+      const url = "/api/grids/" + encodeURIComponent(id) + "/csv";
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        const text = await resp.text();
+        termError("Export failed: " + text);
+        return;
+      }
+      const blob = await resp.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = id + ".csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
+      termStatus("Export Complete", [
+        ["file", id + ".csv"],
+        ["size", (blob.size / 1024).toFixed(1) + " KB"],
+        ["format", "CSV (tidy long-form)"],
+      ]);
+    } catch (err) { termError("Export failed: " + err.message); }
+  }
+});
+
+// ═══════════════════════════════════════════════
+// AI Workbench Commands
+// ═══════════════════════════════════════════════
+
+registerCmd("ai explain", {
+  description: "Explain a formula or output using AI",
+  usage: "ai explain formula <ref> | ai explain output <name>",
+  group: "ai",
+  async handler(args) {
+    if (args.length < 2) {
+      termError("Usage: ai explain formula <ref> | ai explain output <name>");
+      return;
+    }
+    const kind = args[0].toLowerCase();
+    const target = args[1];
+
+    if (kind !== "formula" && kind !== "output") {
+      termError("Usage: ai explain formula <ref> | ai explain output <name>");
+      return;
+    }
+
+    termText("Asking AI to explain " + kind + " '" + target + "'...");
+    try {
+      const body = { kind };
+      if (kind === "formula") {
+        body.ref = target;
+      } else {
+        body.name = target;
+      }
+      const result = await api("POST", "/ai/explain", body);
+      if (!result.ok) {
+        termError(result.error || "Explain failed");
+        return;
+      }
+      const content = result.content || "(no explanation returned)";
+      const contentLines = content.split("\n");
+      const truncated = contentLines.length > _TRUNCATE_LINES;
+      const displayContent = truncated ? contentLines.slice(0, _TRUNCATE_LINES).join("\n") : content;
+      _lastAiContent = { content, kind, target, provider: result.provider, model: result.model };
+
+      let html = '<div class="term-ai-explain">';
+      html += '<div class="term-ai-header">';
+      html += '<span class="term-ai-label">AI Explain</span>';
+      html += '<span class="term-ai-target">' + termEsc(kind) + ': ' + termEsc(target) + '</span>';
+      html += '<span class="term-ai-meta">' + termEsc(result.provider || "") + ' / ' + termEsc(result.model || "") + '</span>';
+      html += '</div>';
+      html += '<div class="term-ai-body">' + termEsc(displayContent) + '</div>';
+      if (truncated) {
+        html += '<div class="term-ai-footer">truncated (' + contentLines.length + ' lines) — use <strong>show full last</strong> to expand</div>';
+      } else {
+        html += '<div class="term-ai-footer">AI-generated — verify independently</div>';
+      }
+      html += '</div>';
+      termAppend(html);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("ai draft addin", {
+  description: "Draft an add-in plugin using AI",
+  usage: 'ai draft addin "<description>"',
+  group: "ai",
+  async handler(args) {
+    if (args.length === 0) {
+      termError('Usage: ai draft addin "<description>"');
+      return;
+    }
+    const description = args.join(" ");
+    termText("Generating add-in draft: " + description + "...");
+    try {
+      const result = await api("POST", "/ai/draft", { description });
+      if (!result.ok) {
+        termError(result.error || "Draft generation failed");
+        return;
+      }
+      const did = result.draft_id;
+      let html = '<div class="term-ai-explain">';
+      html += '<div class="term-ai-header">';
+      html += '<span class="term-ai-label">Draft Created</span>';
+      html += '<span class="term-draft-badge">' + termEsc(did) + '</span>';
+      html += '<span class="term-ai-meta">' + termEsc(result.provider || "") + ' / ' + termEsc(result.model || "") + '</span>';
+      html += '</div>';
+      html += '<div class="term-card-row"><span class="term-card-key">code</span><span class="term-card-val">' + (result.detected_code_lines || "?") + ' lines</span></div>';
+      html += '<div class="term-card-row"><span class="term-card-key">type</span><span class="term-card-val">scalar_plugin</span></div>';
+      html += '</div>';
+      termAppend(html);
+      // Next steps
+      let ns = '<div class="term-next-steps">';
+      ns += '<div class="term-step"><span class="term-step-cmd">draft show ' + termEsc(did) + '</span> <span class="term-step-desc">— review generated code</span></div>';
+      ns += '<div class="term-step"><span class="term-step-cmd">validate draft ' + termEsc(did) + '</span> <span class="term-step-desc">— run policy validation</span></div>';
+      ns += '<div class="term-step"><span class="term-step-cmd">apply draft ' + termEsc(did) + '</span> <span class="term-step-desc">— apply to plugins/ (after validation)</span></div>';
+      ns += '</div>';
+      termAppend(ns);
+      termAppend('<div class="term-ai-footer" style="margin-top:2px;">AI-generated code — review and validate before applying</div>');
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+// Shared draft list renderer
+async function _renderDraftList() {
+  const drafts = await api("GET", "/drafts");
+  if (drafts.length === 0) {
+    termText("No drafts. Use 'ai draft addin \"<description>\"' to create one.");
+    return;
+  }
+  termSection("Drafts (" + drafts.length + ")");
+  let html = '<table class="term-table"><thead><tr>';
+  html += '<th>Draft</th><th>Status</th><th>Type</th><th>Updated</th><th>Prompt</th>';
+  html += '</tr></thead><tbody>';
+  for (const d of drafts) {
+    const statusCls = "status-" + (d.status || "draft");
+    const promptPreview = (d.prompt || "").substring(0, 35) + ((d.prompt || "").length > 35 ? "..." : "");
+    html += '<tr>';
+    html += '<td><span class="term-draft-badge">' + termEsc(d.draft_id) + '</span></td>';
+    html += '<td><span class="term-status-badge ' + statusCls + '">' + termEsc(d.status || "draft") + '</span></td>';
+    html += '<td style="color:var(--fg-dim);">' + termEsc(d.artifact_type || "—") + '</td>';
+    html += '<td>' + termEsc(_fmtTs(d.updated_at || d.created_at)) + '</td>';
+    html += '<td style="color:var(--fg-dim);font-size:9px;">' + termEsc(promptPreview) + '</td>';
+    html += '</tr>';
+  }
+  html += '</tbody></table>';
+  termAppend(html);
+}
+
+registerCmd("draft list", {
+  description: "List all draft artifacts",
+  usage: "draft list",
+  group: "draft",
+  async handler() {
+    try { await _renderDraftList(); }
+    catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("ai list drafts", {
+  description: "List all draft artifacts (alias for draft list)",
+  usage: "ai list drafts",
+  group: "ai",
+  hidden: true,
+  async handler() {
+    try { await _renderDraftList(); }
+    catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+// Shared validation renderer
+function _renderValidation(v) {
+  const errors = v.errors || v.violations || [];
+  const warnings = v.warnings || [];
+  termSection("Validation");
+  let vhtml = '<div class="term-validation-result ' + (v.valid ? "valid" : "invalid") + '">';
+  vhtml += '<div class="term-validation-header">';
+  vhtml += '<span class="term-validation-status ' + (v.valid ? "pass" : "fail") + '">' + (v.valid ? "PASS" : "FAIL") + '</span>';
+  if (v.detected_type) vhtml += '<span style="color:var(--fg-dim);font-size:9px;">type: ' + termEsc(v.detected_type) + '</span>';
+  if (v.registered_names && v.registered_names.length) {
+    vhtml += '<span style="color:var(--fg-dim);font-size:9px;">registers: ' + termEsc(v.registered_names.join(", ")) + '</span>';
+  }
+  vhtml += '</div>';
+  for (const e of errors) {
+    vhtml += '<div class="term-violation-item viol-error"><span class="viol-field">' + termEsc(e.field || "?") + '</span> <span class="viol-reason">' + termEsc(e.reason || "?") + '</span></div>';
+  }
+  for (const w of warnings) {
+    vhtml += '<div class="term-violation-item viol-warning"><span class="viol-field">' + termEsc(w.field || "?") + '</span> <span class="viol-reason">' + termEsc(w.reason || "?") + '</span></div>';
+  }
+  vhtml += '</div>';
+  termAppend(vhtml);
+}
+
+registerCmd("draft show", {
+  description: "Show a draft artifact's metadata and code",
+  usage: "draft show <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: draft show <id>"); return; }
+    const id = args[0];
+    try {
+      const d = await api("GET", "/drafts/" + encodeURIComponent(id));
+      const statusCls = "status-" + (d.status || "draft");
+
+      // Identity card
+      let html = '<div class="term-card">';
+      html += '<div class="term-card-title"><span class="term-draft-badge">' + termEsc(d.draft_id) + '</span> <span class="term-status-badge ' + statusCls + '">' + termEsc(d.status || "draft") + '</span></div>';
+      html += '<div class="term-card-row"><span class="term-card-key">type</span><span class="term-card-val">' + termEsc(d.artifact_type || "—") + '</span></div>';
+      if (d.model || d.provider) {
+        html += '<div class="term-card-row"><span class="term-card-key">model</span><span class="term-card-val">' + termEsc((d.provider || "") + (d.provider && d.model ? " / " : "") + (d.model || "")) + '</span></div>';
+      }
+      html += '<div class="term-card-row"><span class="term-card-key">created</span><span class="term-card-val">' + termEsc(_fmtTs(d.created_at)) + '</span></div>';
+      if (d.derived_from) {
+        html += '<div class="term-card-row"><span class="term-card-key">revision of</span><span class="term-card-val"><span class="term-draft-badge">' + termEsc(d.derived_from) + '</span></span></div>';
+      }
+      if (d.applied_path) {
+        html += '<div class="term-card-row"><span class="term-card-key">applied to</span><span class="term-card-val">' + termEsc(d.applied_path) + '</span></div>';
+      }
+      html += '</div>';
+      termAppend(html);
+
+      // Prompt
+      if (d.prompt) {
+        termSection("Prompt");
+        termAppend('<div class="term-text" style="font-style:italic;">' + termEsc(d.prompt) + '</div>');
+      }
+
+      // Validation result
+      if (d.validation) {
+        _renderValidation(d.validation);
+      }
+
+      // Code (truncated preview)
+      if (d.code) {
+        const codeLines = d.code.split("\n");
+        const maxLines = 40;
+        const codeTruncated = codeLines.length > maxLines;
+        const displayCode = codeTruncated ? codeLines.slice(0, maxLines).join("\n") : d.code;
+        termSection("Code" + (codeTruncated ? " (first " + maxLines + " of " + codeLines.length + " lines)" : ""));
+        termAppend('<pre class="term-code-block">' + termEsc(displayCode) + '</pre>');
+        if (codeTruncated) {
+          termText("Use 'draft show full " + id + "' to see complete code");
+        }
+      }
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("draft diff", {
+  description: "Show the generated code for a draft",
+  usage: "draft diff <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: draft diff <id>"); return; }
+    const id = args[0];
+    try {
+      const d = await api("GET", "/drafts/" + encodeURIComponent(id));
+      const statusCls = "status-" + (d.status || "draft");
+      termAppend('<div class="term-diff-header"><span class="term-draft-badge">' + termEsc(d.draft_id) + '</span> <span class="term-status-badge ' + statusCls + '">' + termEsc(d.status || "draft") + '</span> <span style="color:var(--fg-dim);font-size:9px;">' + termEsc(d.artifact_type || "plugin") + '</span></div>');
+      if (d.code) {
+        termAppend('<pre class="term-code-block">' + termEsc(d.code) + '</pre>');
+      } else {
+        termText("(no code in draft)");
+      }
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("draft delete", {
+  description: "Delete a draft artifact",
+  usage: "draft delete <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: draft delete <id>"); return; }
+    const id = args[0];
+    try {
+      await api("DELETE", "/drafts/" + encodeURIComponent(id));
+      termSuccess("Draft '" + id + "' deleted.");
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("validate draft", {
+  description: "Run policy validation on a draft artifact",
+  usage: "validate draft <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: validate draft <id>"); return; }
+    const id = args[0];
+    try {
+      const result = await api("POST", "/drafts/" + encodeURIComponent(id) + "/validate");
+      termAppend('<div style="margin-bottom:2px;"><span class="term-draft-badge">' + termEsc(id) + '</span></div>');
+      _renderValidation(result);
+
+      if (result.valid) {
+        let ns = '<div class="term-next-steps">';
+        ns += '<div class="term-step"><span class="term-step-cmd">apply draft ' + termEsc(id) + '</span> <span class="term-step-desc">— copy to plugins/ directory</span></div>';
+        ns += '<div class="term-step"><span class="term-step-cmd">commit</span> <span class="term-step-desc">— build workbook with new plugin</span></div>';
+        ns += '</div>';
+        termAppend(ns);
+      }
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("apply draft", {
+  description: "Apply a validated draft to the plugins/ directory",
+  usage: "apply draft <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: apply draft <id>"); return; }
+    const id = args[0];
+    try {
+      const result = await api("POST", "/drafts/" + encodeURIComponent(id) + "/apply");
+      S.dirty = true;
+      updateStatus();
+      termStatus("Draft Applied", [
+        ["draft", id],
+        ["applied to", result.applied_path || "—"],
+        ["status", "applied — workbook marked dirty"],
+      ]);
+      let ns = '<div class="term-next-steps">';
+      ns += '<div class="term-step"><span class="term-step-cmd">commit</span> <span class="term-step-desc">— build workbook with new plugin</span></div>';
+      ns += '</div>';
+      termAppend(ns);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("reject draft", {
+  description: "Reject a draft artifact (marks as rejected, does not delete)",
+  usage: "reject draft <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: reject draft <id>"); return; }
+    const id = args[0];
+    try {
+      await api("POST", "/drafts/" + encodeURIComponent(id) + "/reject");
+      termSuccess("Draft '" + id + "' rejected.");
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+// ── Iteration + recall commands ──
+
+registerCmd("ai revise draft", {
+  description: "Create a revised draft by asking AI to modify an existing one",
+  usage: 'ai revise draft <id> "<instruction>"',
+  group: "ai",
+  async handler(args) {
+    if (args.length < 2) {
+      termError('Usage: ai revise draft <id> "<instruction>"');
+      return;
+    }
+    const parentId = args[0];
+    const instruction = args.slice(1).join(" ");
+    termText("Revising " + parentId + ": " + instruction + "...");
+    try {
+      const result = await api("POST", "/ai/revise", { draft_id: parentId, instruction });
+      if (!result.ok) {
+        termError(result.error || "Revision failed");
+        return;
+      }
+      const did = result.draft_id;
+      let html = '<div class="term-ai-explain">';
+      html += '<div class="term-ai-header">';
+      html += '<span class="term-ai-label">Draft Revised</span>';
+      html += '<span class="term-draft-badge">' + termEsc(did) + '</span>';
+      html += '<span class="term-ai-meta">' + termEsc(result.provider || "") + ' / ' + termEsc(result.model || "") + '</span>';
+      html += '</div>';
+      html += '<div class="term-card-row"><span class="term-card-key">revision of</span><span class="term-card-val"><span class="term-draft-badge">' + termEsc(parentId) + '</span></span></div>';
+      html += '<div class="term-card-row"><span class="term-card-key">code</span><span class="term-card-val">' + (result.detected_code_lines || "?") + ' lines</span></div>';
+      html += '</div>';
+      termAppend(html);
+      let ns = '<div class="term-next-steps">';
+      ns += '<div class="term-step"><span class="term-step-cmd">draft show ' + termEsc(did) + '</span> <span class="term-step-desc">— review revised code</span></div>';
+      ns += '<div class="term-step"><span class="term-step-cmd">validate draft ' + termEsc(did) + '</span> <span class="term-step-desc">— run policy validation</span></div>';
+      ns += '<div class="term-step"><span class="term-step-cmd">draft lineage ' + termEsc(did) + '</span> <span class="term-step-desc">— view revision chain</span></div>';
+      ns += '</div>';
+      termAppend(ns);
+      termAppend('<div class="term-ai-footer" style="margin-top:2px;">AI-generated revision — review and validate before applying</div>');
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("draft lineage", {
+  description: "Show the revision chain for a draft",
+  usage: "draft lineage <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: draft lineage <id>"); return; }
+    const id = args[0];
+    try {
+      // Load all drafts and build the chain
+      const drafts = await api("GET", "/drafts");
+      const byId = {};
+      for (const d of drafts) byId[d.draft_id] = d;
+
+      // Walk backward from target to root
+      const chain = [];
+      let current = id;
+      const seen = new Set();
+      while (current && byId[current] && !seen.has(current)) {
+        seen.add(current);
+        chain.unshift(current);
+        current = byId[current].derived_from;
+      }
+
+      if (chain.length === 0) {
+        termError("Draft '" + id + "' not found.");
+        return;
+      }
+
+      // Also walk forward from the target to find descendants
+      const children = {};
+      for (const d of drafts) {
+        if (d.derived_from) {
+          if (!children[d.derived_from]) children[d.derived_from] = [];
+          children[d.derived_from].push(d.draft_id);
+        }
+      }
+      let tip = id;
+      while (children[tip] && children[tip].length > 0) {
+        tip = children[tip][0]; // follow first child
+        if (seen.has(tip)) break;
+        seen.add(tip);
+        chain.push(tip);
+      }
+
+      termSection("Draft Lineage");
+      let html = '<div style="padding:4px 0;">';
+      for (let i = 0; i < chain.length; i++) {
+        const cid = chain[i];
+        const d = byId[cid];
+        const isCurrent = cid === id;
+        const statusCls = "status-" + (d ? (d.status || "draft") : "draft");
+        html += '<span class="term-draft-badge" style="' + (isCurrent ? 'outline:2px solid var(--accent);outline-offset:1px;' : '') + '">' + termEsc(cid) + '</span>';
+        if (d) html += ' <span class="term-status-badge ' + statusCls + '">' + termEsc(d.status || "draft") + '</span>';
+        if (i < chain.length - 1) html += ' <span style="color:var(--fg-dim);margin:0 4px;">→</span> ';
+      }
+      html += '</div>';
+      termAppend(html);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("draft show full", {
+  description: "Show a draft's complete code without truncation",
+  usage: "draft show full <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: draft show full <id>"); return; }
+    const id = args[0];
+    try {
+      const d = await api("GET", "/drafts/" + encodeURIComponent(id));
+      if (d.code) {
+        const lines = d.code.split("\n").length;
+        termSection("Full Code: " + d.draft_id + " (" + lines + " lines)");
+        termAppend('<pre class="term-code-block" style="max-height:none;">' + termEsc(d.code) + '</pre>');
+      } else {
+        termText("(no code in draft)");
+      }
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("draft validation", {
+  description: "Recall the stored validation result for a draft (does not rerun validation)",
+  usage: "draft validation <id>",
+  group: "draft",
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: draft validation <id>"); return; }
+    const id = args[0];
+    try {
+      const d = await api("GET", "/drafts/" + encodeURIComponent(id));
+      if (!d.validation) {
+        termText("No validation result stored for " + id + ". Run 'validate draft " + id + "' first.");
+        return;
+      }
+      termAppend('<div style="margin-bottom:2px;"><span class="term-draft-badge">' + termEsc(id) + '</span> <span style="color:var(--fg-dim);font-size:9px;">stored validation result</span></div>');
+      _renderValidation(d.validation);
+    } catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("show full last", {
+  description: "Show the full content of the last truncated AI explanation",
+  usage: "show full last",
+  group: "ai",
+  handler() {
+    if (!_lastAiContent) {
+      termText("No recent AI explanation to expand.");
+      return;
+    }
+    const c = _lastAiContent;
+    let html = '<div class="term-ai-explain">';
+    html += '<div class="term-ai-header">';
+    html += '<span class="term-ai-label">AI Explain (full)</span>';
+    html += '<span class="term-ai-target">' + termEsc(c.kind || "") + ': ' + termEsc(c.target || "") + '</span>';
+    html += '<span class="term-ai-meta">' + termEsc(c.provider || "") + ' / ' + termEsc(c.model || "") + '</span>';
+    html += '</div>';
+    html += '<div class="term-ai-body">' + termEsc(c.content) + '</div>';
+    html += '<div class="term-ai-footer">AI-generated — verify independently</div>';
+    html += '</div>';
+    termAppend(html);
+  }
+});
+
 // ── Init ──
 window.addEventListener("resize", resizeCanvas);
 
 (async function init() {
+  // Apply saved mode
+  setMode(S.uiMode);
+
   // Force immediate resize (no debounce on first paint)
   const container = document.getElementById("grid-container");
   canvas.width = container.clientWidth;

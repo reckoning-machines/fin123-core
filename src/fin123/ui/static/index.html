@@ -14,6 +14,11 @@
   <div id="menubar">
     <div id="menubar-left">
       <span id="logo">fin123</span>
+      <div id="mode-switcher">
+        <button class="mode-btn active" data-mode="spreadsheet" title="Spreadsheet Mode">Spreadsheet</button>
+        <button class="mode-btn" data-mode="system" title="System Mode">System</button>
+        <button class="mode-btn" data-mode="terminal" title="Terminal Mode">Terminal</button>
+      </div>
       <span class="menu-item" id="btn-save" title="Ctrl+S">Commit</span>
       <span class="menu-item" id="btn-sync">Sync</span>
       <span class="menu-item" id="btn-workflow">Workflow</span>
@@ -202,6 +207,21 @@
             <button class="btn" id="btn-registry-push">Push Latest</button>
           </div>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Terminal panel -->
+  <div id="terminal-panel">
+    <div id="terminal-header">
+      <span class="terminal-title">Terminal</span>
+      <button id="terminal-toggle" class="terminal-collapse-btn" title="Toggle terminal"></button>
+    </div>
+    <div id="terminal-body">
+      <div id="terminal-output"></div>
+      <div id="terminal-input-row">
+        <span class="terminal-prompt">fin123&gt;</span>
+        <input id="terminal-input" type="text" spellcheck="false" autocomplete="off" placeholder="Type help for commands...">
       </div>
     </div>
   </div>

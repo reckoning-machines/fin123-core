@@ -1092,6 +1092,430 @@ class ProjectService:
     # Backward-compatible alias
     run_workbook = build_workbook
 
+    # ── Terminal scenario & sweep persistence ──
+
+    def _terminal_dir(self) -> Path:
+        """Return (and create) the .fin123/ directory for terminal state."""
+        d = self.project_dir / ".fin123"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def _scenarios_path(self) -> Path:
+        return self._terminal_dir() / "scenarios.json"
+
+    def _sweeps_dir(self) -> Path:
+        d = self._terminal_dir() / "sweeps"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def _load_scenarios(self) -> dict[str, Any]:
+        p = self._scenarios_path()
+        if p.exists():
+            import json
+            return json.loads(p.read_text())
+        return {}
+
+    def _save_scenarios(self, data: dict[str, Any]) -> None:
+        import json
+        self._scenarios_path().write_text(json.dumps(data, indent=2, default=str))
+
+    def scenario_save(self, name: str, inputs: dict, outputs: dict | None = None,
+                      run_id: str | None = None, notes: str | None = None) -> dict[str, Any]:
+        """Persist a named scenario."""
+        from datetime import datetime, timezone
+        scenarios = self._load_scenarios()
+        now = datetime.now(timezone.utc).isoformat()
+        existing = scenarios.get(name)
+        scenarios[name] = {
+            "name": name,
+            "inputs": inputs,
+            "outputs": outputs or {},
+            "run_id": run_id,
+            "notes": notes,
+            "created_at": existing["created_at"] if existing else now,
+            "updated_at": now,
+        }
+        self._save_scenarios(scenarios)
+        return scenarios[name]
+
+    def scenario_list(self) -> list[dict[str, Any]]:
+        """List all persisted scenarios."""
+        scenarios = self._load_scenarios()
+        return list(scenarios.values())
+
+    def scenario_get(self, name: str) -> dict[str, Any] | None:
+        """Get a single persisted scenario by name."""
+        return self._load_scenarios().get(name)
+
+    def scenario_delete(self, name: str) -> bool:
+        """Delete a persisted scenario. Returns True if it existed."""
+        scenarios = self._load_scenarios()
+        if name not in scenarios:
+            return False
+        del scenarios[name]
+        self._save_scenarios(scenarios)
+        return True
+
+    def update_param(self, name: str, value: Any) -> dict[str, Any]:
+        """Update a workbook parameter default value in-memory.
+
+        This modifies the spec params dict directly and marks the workbook dirty.
+        The change is persisted on next commit (save_snapshot).
+        """
+        self._check_writable()
+        params = self._spec.get("params", {})
+        if name not in params:
+            raise ValueError(f"Unknown parameter: {name}")
+        old_value = params[name]
+        # Parse the value to the appropriate type
+        parsed = self._parse_literal(str(value))
+        params[name] = parsed
+        self._spec["params"] = params
+        self._cell_graph = None  # invalidate
+        self._dirty = True
+        return {"ok": True, "name": name, "old_value": old_value, "new_value": parsed, "dirty": True}
+
+    def sweep_save(self, sweep_id: str, data: dict[str, Any]) -> Path:
+        """Persist a sweep result to disk."""
+        import json
+        p = self._sweeps_dir() / f"{sweep_id}.json"
+        p.write_text(json.dumps(data, indent=2, default=str))
+        return p
+
+    def sweep_list(self) -> list[dict[str, Any]]:
+        """List all persisted sweep results (summary only)."""
+        import json
+        results = []
+        d = self._sweeps_dir()
+        for p in sorted(d.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+            try:
+                data = json.loads(p.read_text())
+                results.append({
+                    "sweep_id": data.get("sweep_id", p.stem),
+                    "input": data.get("input", "?"),
+                    "points": len(data.get("results", [])),
+                    "created_at": data.get("created_at", ""),
+                })
+            except Exception:
+                continue
+        return results
+
+    def sweep_get(self, sweep_id: str) -> dict[str, Any] | None:
+        """Load a persisted sweep result."""
+        import json
+        p = self._sweeps_dir() / f"{sweep_id}.json"
+        if not p.exists():
+            return None
+        return json.loads(p.read_text())
+
+    def sweep_export_csv(self, sweep_id: str) -> str | None:
+        """Export a sweep result as CSV string."""
+        data = self.sweep_get(sweep_id)
+        if not data:
+            return None
+        import csv
+        import io
+        results = data.get("results", [])
+        if not results:
+            return ""
+        # Collect all output keys
+        output_keys: list[str] = []
+        for r in results:
+            for k in r.get("outputs", {}):
+                if k not in output_keys:
+                    output_keys.append(k)
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        writer.writerow([data.get("input", "input")] + output_keys + ["run_id", "status"])
+        for r in results:
+            row = [r.get("value", "")]
+            for k in output_keys:
+                row.append(r.get("outputs", {}).get(k, ""))
+            row.append(r.get("run_id", ""))
+            row.append(r.get("status", ""))
+            writer.writerow(row)
+        return buf.getvalue()
+
+    # ── Grid sweep persistence ──
+
+    def _grids_dir(self) -> Path:
+        d = self._terminal_dir() / "grids"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def grid_save(self, grid_id: str, data: dict[str, Any]) -> Path:
+        """Persist a grid sweep result to disk."""
+        import json
+        p = self._grids_dir() / f"{grid_id}.json"
+        p.write_text(json.dumps(data, indent=2, default=str))
+        return p
+
+    def grid_list(self) -> list[dict[str, Any]]:
+        """List all persisted grid results (summary only)."""
+        import json
+        results = []
+        d = self._grids_dir()
+        for p in sorted(d.glob("*.json"), key=lambda x: x.stat().st_mtime, reverse=True):
+            try:
+                data = json.loads(p.read_text())
+                results.append({
+                    "grid_id": data.get("grid_id", p.stem),
+                    "input_x": data.get("input_x", "?"),
+                    "input_y": data.get("input_y", "?"),
+                    "points": len(data.get("cells", [])),
+                    "display_output": data.get("display_output", "?"),
+                    "created_at": data.get("created_at", ""),
+                })
+            except Exception:
+                continue
+        return results
+
+    def grid_get(self, grid_id: str) -> dict[str, Any] | None:
+        """Load a persisted grid result."""
+        import json
+        p = self._grids_dir() / f"{grid_id}.json"
+        if not p.exists():
+            return None
+        return json.loads(p.read_text())
+
+    def grid_export_csv(self, grid_id: str) -> str | None:
+        """Export a grid result as tidy long-form CSV."""
+        data = self.grid_get(grid_id)
+        if not data:
+            return None
+        import csv
+        import io
+        cells = data.get("cells", [])
+        if not cells:
+            return ""
+        buf = io.StringIO()
+        writer = csv.writer(buf)
+        ix = data.get("input_x", "input_x")
+        iy = data.get("input_y", "input_y")
+        out = data.get("display_output", "output")
+        writer.writerow([ix, iy, "run_id", "status", out])
+        for c in cells:
+            writer.writerow([
+                c.get("x", ""),
+                c.get("y", ""),
+                c.get("run_id", ""),
+                c.get("status", ""),
+                c.get("display_value", ""),
+            ])
+        return buf.getvalue()
+
+    # ── AI Workbench: draft artifact persistence ──
+
+    def _drafts_dir(self) -> Path:
+        d = self._terminal_dir() / "drafts"
+        d.mkdir(exist_ok=True)
+        return d
+
+    def _next_draft_id(self) -> str:
+        """Generate next sequential draft ID (draft_0001, draft_0002, ...)."""
+        d = self._drafts_dir()
+        existing = sorted(d.glob("draft_*"))
+        if not existing:
+            return "draft_0001"
+        last = existing[-1].name
+        try:
+            num = int(last.split("_")[1])
+        except (IndexError, ValueError):
+            num = len(existing)
+        return f"draft_{num + 1:04d}"
+
+    def draft_save(
+        self,
+        artifact_type: str,
+        prompt: str,
+        code: str,
+        model: str | None = None,
+        provider: str | None = None,
+        prompt_hash: str | None = None,
+        derived_from: str | None = None,
+    ) -> dict[str, Any]:
+        """Save a new draft artifact to disk.
+
+        Returns the draft metadata dict including its assigned draft_id.
+        """
+        from datetime import datetime, timezone
+        import json
+        import hashlib
+
+        draft_id = self._next_draft_id()
+        draft_dir = self._drafts_dir() / draft_id
+        draft_dir.mkdir()
+
+        now = datetime.now(timezone.utc).isoformat()
+        if not prompt_hash:
+            prompt_hash = hashlib.sha256(prompt.encode()).hexdigest()[:16]
+
+        meta = {
+            "draft_id": draft_id,
+            "created_at": now,
+            "updated_at": now,
+            "artifact_type": artifact_type,
+            "status": "draft",
+            "prompt": prompt,
+            "prompt_hash": prompt_hash,
+            "model": model,
+            "provider": provider,
+            "validation": None,
+            "warnings": [],
+            "target_project": str(self.project_dir),
+            "derived_from": derived_from,
+            "applied_path": None,
+        }
+
+        (draft_dir / "metadata.json").write_text(
+            json.dumps(meta, indent=2, default=str) + "\n"
+        )
+        (draft_dir / "artifact.py").write_text(code)
+
+        return meta
+
+    def draft_list(self) -> list[dict[str, Any]]:
+        """List all draft artifacts (summary only)."""
+        import json
+        results = []
+        d = self._drafts_dir()
+        for p in sorted(d.glob("draft_*")):
+            meta_path = p / "metadata.json"
+            if meta_path.exists():
+                try:
+                    meta = json.loads(meta_path.read_text())
+                    results.append(meta)
+                except Exception:
+                    continue
+        return results
+
+    def draft_get(self, draft_id: str) -> dict[str, Any] | None:
+        """Get a draft's metadata and code."""
+        import json
+        draft_dir = self._drafts_dir() / draft_id
+        meta_path = draft_dir / "metadata.json"
+        code_path = draft_dir / "artifact.py"
+        if not meta_path.exists():
+            return None
+        meta = json.loads(meta_path.read_text())
+        meta["code"] = code_path.read_text() if code_path.exists() else ""
+        return meta
+
+    def draft_delete(self, draft_id: str) -> bool:
+        """Delete a draft artifact directory."""
+        import shutil
+        draft_dir = self._drafts_dir() / draft_id
+        if not draft_dir.exists():
+            return False
+        shutil.rmtree(draft_dir)
+        return True
+
+    def draft_update_status(
+        self, draft_id: str, status: str, **extra: Any
+    ) -> dict[str, Any] | None:
+        """Update a draft's status and optional extra fields."""
+        from datetime import datetime, timezone
+        import json
+
+        draft_dir = self._drafts_dir() / draft_id
+        meta_path = draft_dir / "metadata.json"
+        if not meta_path.exists():
+            return None
+        meta = json.loads(meta_path.read_text())
+        meta["status"] = status
+        meta["updated_at"] = datetime.now(timezone.utc).isoformat()
+        for k, v in extra.items():
+            meta[k] = v
+        meta_path.write_text(json.dumps(meta, indent=2, default=str) + "\n")
+        return meta
+
+    def draft_validate(self, draft_id: str) -> dict[str, Any]:
+        """Run production policy validation on a draft artifact.
+
+        Uses the production plugin validator to check:
+        - syntax errors
+        - forbidden imports (eval/exec/__import__/subprocess/etc.)
+        - network patterns
+        - filesystem write patterns
+        - PLUGIN_META presence and field types
+        - register() entrypoint
+        - transform callable presence
+
+        Returns structured validation result and updates draft status.
+        """
+        import json
+        from fin123.plugins.validator import validate_plugin_source
+
+        draft_dir = self._drafts_dir() / draft_id
+        code_path = draft_dir / "artifact.py"
+        meta_path = draft_dir / "metadata.json"
+        if not meta_path.exists():
+            raise ValueError(f"Draft '{draft_id}' not found")
+
+        code = code_path.read_text() if code_path.exists() else ""
+        result = validate_plugin_source(code)
+        result["draft_id"] = draft_id
+
+        new_status = "validated" if result["valid"] else "validation_failed"
+        self.draft_update_status(
+            draft_id, new_status, validation=result
+        )
+
+        return result
+
+    def draft_apply(self, draft_id: str) -> dict[str, Any]:
+        """Apply a validated draft: copy artifact to plugins/ directory.
+
+        The draft must be in 'validated' status. After apply:
+        - artifact.py is copied to plugins/<draft_id>.py
+        - draft status is set to 'applied'
+        - workbook is marked dirty
+        - user must still commit + build to activate the plugin
+
+        Does NOT auto-commit, auto-build, or auto-verify.
+        """
+        import json
+        import shutil
+
+        draft_dir = self._drafts_dir() / draft_id
+        meta_path = draft_dir / "metadata.json"
+        code_path = draft_dir / "artifact.py"
+        if not meta_path.exists():
+            raise ValueError(f"Draft '{draft_id}' not found")
+
+        meta = json.loads(meta_path.read_text())
+        if meta["status"] not in ("validated",):
+            raise ValueError(
+                f"Draft must be validated before apply. Current status: {meta['status']}. "
+                f"Run 'validate draft {draft_id}' first."
+            )
+
+        # Ensure plugins/ directory exists
+        plugins_dir = self.project_dir / "plugins"
+        plugins_dir.mkdir(exist_ok=True)
+
+        # Copy artifact to plugins directory
+        target_filename = f"{draft_id}.py"
+        target_path = plugins_dir / target_filename
+        shutil.copy2(code_path, target_path)
+
+        # Update draft metadata
+        self.draft_update_status(
+            draft_id,
+            "applied",
+            applied_path=str(target_path),
+        )
+
+        # Mark workbook dirty so user must commit
+        self._dirty = True
+
+        return {
+            "draft_id": draft_id,
+            "applied_path": str(target_path),
+            "status": "applied",
+            "next_steps": "Run 'commit' to build the workbook with this plugin.",
+        }
+
     def run_sync(self, table_name: str | None = None) -> dict[str, Any]:
         """Trigger SQL sync.
 

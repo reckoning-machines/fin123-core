@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>fin123 — Deterministic Financial Models</title>
+<style>
+  :root {
+    --bg: #141312;
+    --fg: #e7e2db;
+    --fg-dim: #8e8376;
+    --fg-muted: #bfb6aa;
+    --accent: #f59e0b;
+    --border: #2f2a25;
+    --font: 'SF Mono', 'Cascadia Code', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    font-family: var(--font);
+    background: var(--bg);
+    color: var(--fg);
+    font-size: 14px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  .container { max-width: 720px; margin: 0 auto; padding: 0 24px; }
+  header {
+    padding: 80px 0 48px;
+    border-bottom: 1px solid var(--border);
+  }
+  h1 {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--accent);
+    letter-spacing: 1px;
+    margin-bottom: 24px;
+  }
+  .hero-line {
+    font-size: 20px;
+    font-weight: 400;
+    color: var(--fg);
+    margin-bottom: 8px;
+  }
+  .hero-sub {
+    font-size: 13px;
+    color: var(--fg-dim);
+    max-width: 540px;
+  }
+  section {
+    padding: 40px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  h2 {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--accent);
+    margin-bottom: 16px;
+  }
+  p { color: var(--fg-muted); margin-bottom: 12px; font-size: 13px; }
+  .code-block {
+    background: #1b1917;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 12px 16px;
+    font-size: 12px;
+    color: var(--fg-dim);
+    overflow-x: auto;
+    margin: 12px 0;
+    white-space: pre;
+    line-height: 1.7;
+  }
+  .code-block .cmd { color: var(--fg); }
+  .code-block .comment { color: #5a5249; }
+  .term { color: var(--fg); font-weight: 500; }
+  .pair { display: flex; gap: 12px; margin-bottom: 6px; font-size: 13px; }
+  .pair-key { color: var(--fg-dim); min-width: 100px; flex-shrink: 0; }
+  .pair-val { color: var(--fg-muted); }
+  footer {
+    padding: 32px 0;
+    font-size: 11px;
+    color: var(--fg-dim);
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<header>
+  <h1>fin123</h1>
+  <div class="hero-line">Spreadsheet models that behave like software.</div>
+  <div class="hero-sub">Build models in a spreadsheet. Run experiments like a program. Extend them with governed code.</div>
+</header>
+
+<section>
+  <h2>Build</h2>
+  <p>Author financial models in a familiar spreadsheet grid. Formulas, parameters, named ranges, multi-sheet workbooks. Canvas-rendered, keyboard-first, runs locally.</p>
+  <p>Everything you write is deterministic. Same inputs, same outputs, every time.</p>
+</section>
+
+<section>
+  <h2>Operate</h2>
+  <p>Terminal Mode turns your model into an executable program.</p>
+  <div class="pair"><span class="pair-key"><span class="term">commit</span></span><span class="pair-val">Persist state and execute a deterministic build. Returns a run_id.</span></div>
+  <div class="pair"><span class="pair-key"><span class="term">scenario</span></span><span class="pair-val">Label a committed run. Compare scenarios side by side.</span></div>
+  <div class="pair"><span class="pair-key"><span class="term">sweep</span></span><span class="pair-val">Run the model across one parameter. Each row is a real execution.</span></div>
+  <div class="pair"><span class="pair-key"><span class="term">grid</span></span><span class="pair-val">Run the model across two parameters. Matrix output.</span></div>
+
+  <p style="margin-top:16px;">A sweep runs the same model multiple times with different assumptions and collects the results. Each row is a real execution, not a recalculated cell.</p>
+
+  <div class="code-block"><span class="cmd">sweep revenue_growth 0.04 0.06 0.08 0.10</span>
+<span class="cmd">grid revenue_growth 0.04 0.08 vs wacc 0.08 0.10 --output value_per_share</span></div>
+</section>
+
+<section>
+  <h2>Extend</h2>
+  <p>AI generates add-ins as reviewable Python code. Every artifact follows an explicit lifecycle:</p>
+
+  <div class="code-block"><span class="comment"># generate</span>
+<span class="cmd">ai draft addin "calculate compound annual growth rate"</span>
+
+<span class="comment"># review and validate</span>
+<span class="cmd">draft show draft_0001</span>
+<span class="cmd">validate draft draft_0001</span>
+
+<span class="comment"># apply and build</span>
+<span class="cmd">apply draft draft_0001</span>
+<span class="cmd">commit</span></div>
+
+  <p>Drafts are immutable. Revisions create new drafts. Nothing is applied silently. The user controls commit, build, and verify.</p>
+</section>
+
+<section>
+  <h2>Architecture</h2>
+  <p>Polars-backed scalar DAG and table evaluation. Lark LALR(1) formula parser. FastAPI local server. Canvas-rendered grid. Immutable runs with SHA-256 integrity. Plugin system with policy validation.</p>
+  <p>No database. No account. No network calls during builds.</p>
+  <p>Open source. Apache-2.0.</p>
+</section>
+
+<footer>
+  <a href="https://github.com/reckoning-machines/fin123-core">GitHub</a> · Built by Reckoning Machines · v0.5.0
+</footer>
+
+</div>
+</body>
+</html>

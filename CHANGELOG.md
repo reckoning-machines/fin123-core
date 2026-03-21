@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.5.0] — 2026-03-20
+
+### Added
+
+- **Terminal Mode** — three UI modes (Spreadsheet, System, Terminal) with
+  mode switcher. Terminal provides a deterministic runner shell.
+- **`commit` as primary action** — persists state + builds in one step.
+  Returns run_id, scalar/table summaries, timestamps.
+- **Persistent scenarios** — `scenario save/load/list/show/delete/compare`.
+  Stored in `.fin123/scenarios.json`. Scenarios label committed runs.
+- **Parameter sweeps** — `sweep <input> <values...>` with `--outputs` selection,
+  `range()` syntax, live progress, persisted results, CSV export.
+- **Grid sweeps** — `grid <X> <valsX> vs <Y> <valsY> --output <name>`.
+  2D parameter experiments with matrix rendering. 100-cell cap.
+- **AI Workbench** — provider-backed `ai explain formula/output`,
+  `ai draft addin`, `ai revise draft`. Draft → validate → apply lifecycle.
+- **Plugin manager** (`fin123.plugins.manager`) — discovers, validates,
+  imports, and registers plugins from `plugins/` during builds.
+- **Production plugin validator** (`fin123.plugins.validator`) — AST-based
+  policy scan: forbidden imports, eval/exec, network patterns, PLUGIN_META
+  type checks, register() entrypoint.
+- **Draft iteration** — `ai revise draft` creates new drafts linked via
+  `derived_from`. `draft lineage` shows revision chains.
+- **LLM provider** (`fin123.llm.provider`) — Anthropic + OpenAI via httpx.
+  Config via environment variables.
+- **Explanation truncation** — long AI explanations truncated to 8 lines.
+  `show full last` to expand.
+- **Draft code preview** — `draft show` truncates at 40 lines.
+  `draft show full` for complete code.
+- **Validation recall** — `draft validation <id>` recalls stored result
+  without re-running validation.
+
+### Changed
+
+- Version bump to 0.5.0.
+- README rewritten for current capabilities.
+- Public site (`fin123_public/index.html`) created.
+- `docs/concepts.md` and `docs/terminal.md` created.
+
 ## [0.4.1] — 2026-03-12
 
 ### Added

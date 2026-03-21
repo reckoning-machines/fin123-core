@@ -772,4 +772,345 @@ def _api_router():
         except ValueError as exc:
             raise HTTPException(400, str(exc))
 
+    # -- Terminal: scenarios --
+
+    class ScenarioSaveRequest(BaseModel):
+        name: str
+        inputs: dict[str, Any]
+        outputs: dict[str, Any] | None = None
+        run_id: str | None = None
+        notes: str | None = None
+
+    @router.get("/scenarios")
+    async def list_scenarios() -> list[dict[str, Any]]:
+        return _svc().scenario_list()
+
+    @router.get("/scenarios/{name}")
+    async def get_scenario(name: str) -> dict[str, Any]:
+        sc = _svc().scenario_get(name)
+        if sc is None:
+            raise HTTPException(404, f"Scenario '{name}' not found")
+        return sc
+
+    @router.post("/scenarios")
+    async def save_scenario(req: ScenarioSaveRequest) -> dict[str, Any]:
+        return _svc().scenario_save(
+            name=req.name, inputs=req.inputs, outputs=req.outputs,
+            run_id=req.run_id, notes=req.notes,
+        )
+
+    @router.delete("/scenarios/{name}")
+    async def delete_scenario(name: str) -> dict[str, Any]:
+        ok = _svc().scenario_delete(name)
+        if not ok:
+            raise HTTPException(404, f"Scenario '{name}' not found")
+        return {"ok": True, "deleted": name}
+
+    # -- Terminal: params --
+
+    class UpdateParamRequest(BaseModel):
+        name: str
+        value: Any
+
+    @router.post("/params/update")
+    async def update_param(req: UpdateParamRequest) -> dict[str, Any]:
+        try:
+            return _svc().update_param(req.name, req.value)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+
+    # -- Terminal: sweeps --
+
+    class SweepSaveRequest(BaseModel):
+        sweep_id: str
+        data: dict[str, Any]
+
+    @router.get("/sweeps")
+    async def list_sweeps() -> list[dict[str, Any]]:
+        return _svc().sweep_list()
+
+    @router.get("/sweeps/{sweep_id}")
+    async def get_sweep(sweep_id: str) -> dict[str, Any]:
+        result = _svc().sweep_get(sweep_id)
+        if result is None:
+            raise HTTPException(404, f"Sweep '{sweep_id}' not found")
+        return result
+
+    @router.post("/sweeps")
+    async def save_sweep(req: SweepSaveRequest) -> dict[str, Any]:
+        path = _svc().sweep_save(req.sweep_id, req.data)
+        return {"ok": True, "path": str(path)}
+
+    @router.get("/sweeps/{sweep_id}/csv")
+    async def export_sweep_csv(sweep_id: str):
+        csv_data = _svc().sweep_export_csv(sweep_id)
+        if csv_data is None:
+            raise HTTPException(404, f"Sweep '{sweep_id}' not found")
+        from fastapi.responses import Response
+        return Response(
+            content=csv_data,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={sweep_id}.csv"},
+        )
+
+    # -- Terminal: grids --
+
+    class GridSaveRequest(BaseModel):
+        grid_id: str
+        data: dict[str, Any]
+
+    @router.get("/grids")
+    async def list_grids() -> list[dict[str, Any]]:
+        return _svc().grid_list()
+
+    @router.get("/grids/{grid_id}")
+    async def get_grid(grid_id: str) -> dict[str, Any]:
+        result = _svc().grid_get(grid_id)
+        if result is None:
+            raise HTTPException(404, f"Grid '{grid_id}' not found")
+        return result
+
+    @router.post("/grids")
+    async def save_grid(req: GridSaveRequest) -> dict[str, Any]:
+        path = _svc().grid_save(req.grid_id, req.data)
+        return {"ok": True, "path": str(path)}
+
+    @router.get("/grids/{grid_id}/csv")
+    async def export_grid_csv(grid_id: str):
+        csv_data = _svc().grid_export_csv(grid_id)
+        if csv_data is None:
+            raise HTTPException(404, f"Grid '{grid_id}' not found")
+        from fastapi.responses import Response
+        return Response(
+            content=csv_data,
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename={grid_id}.csv"},
+        )
+
+    # -- AI Workbench: drafts --
+
+    class DraftSaveRequest(BaseModel):
+        artifact_type: str = "scalar_plugin"
+        prompt: str
+        code: str
+        model: str | None = None
+        provider: str | None = None
+        prompt_hash: str | None = None
+        derived_from: str | None = None
+
+    @router.get("/drafts")
+    async def list_drafts() -> list[dict[str, Any]]:
+        return _svc().draft_list()
+
+    @router.get("/drafts/{draft_id}")
+    async def get_draft(draft_id: str) -> dict[str, Any]:
+        result = _svc().draft_get(draft_id)
+        if result is None:
+            raise HTTPException(404, f"Draft '{draft_id}' not found")
+        return result
+
+    @router.post("/drafts")
+    async def save_draft(req: DraftSaveRequest) -> dict[str, Any]:
+        return _svc().draft_save(
+            artifact_type=req.artifact_type,
+            prompt=req.prompt,
+            code=req.code,
+            model=req.model,
+            provider=req.provider,
+            prompt_hash=req.prompt_hash,
+            derived_from=req.derived_from,
+        )
+
+    @router.delete("/drafts/{draft_id}")
+    async def delete_draft(draft_id: str) -> dict[str, Any]:
+        ok = _svc().draft_delete(draft_id)
+        if not ok:
+            raise HTTPException(404, f"Draft '{draft_id}' not found")
+        return {"ok": True, "deleted": draft_id}
+
+    @router.post("/drafts/{draft_id}/validate")
+    async def validate_draft(draft_id: str) -> dict[str, Any]:
+        try:
+            return _svc().draft_validate(draft_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+
+    @router.post("/drafts/{draft_id}/apply")
+    async def apply_draft(draft_id: str) -> dict[str, Any]:
+        try:
+            return _svc().draft_apply(draft_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+
+    @router.post("/drafts/{draft_id}/reject")
+    async def reject_draft(draft_id: str) -> dict[str, Any]:
+        result = _svc().draft_update_status(draft_id, "rejected")
+        if result is None:
+            raise HTTPException(404, f"Draft '{draft_id}' not found")
+        return result
+
+    # -- AI: LLM-backed explain and draft generation --
+
+    class AIExplainRequest(BaseModel):
+        kind: str  # "formula" or "output"
+        ref: str | None = None  # cell reference for formula
+        name: str | None = None  # output name
+        formula: str | None = None
+        display: str | None = None
+        value: Any = None
+        context: str | None = None
+
+    class AIDraftRequest(BaseModel):
+        description: str
+
+    @router.get("/ai/config")
+    async def ai_config() -> dict[str, Any]:
+        from fin123.llm.provider import get_config
+        return get_config()
+
+    @router.post("/ai/explain")
+    async def ai_explain(req: AIExplainRequest) -> dict[str, Any]:
+        from fin123.llm.provider import explain_formula, explain_output
+
+        if req.kind == "formula":
+            if not req.ref:
+                raise HTTPException(400, "ref is required for formula explanation")
+            # If formula not provided, try to resolve from workbook
+            formula = req.formula or ""
+            display = req.display or ""
+            if not formula and req.ref:
+                try:
+                    info = _svc().get_project_info()
+                    sheets = info.get("sheets", [])
+                    active_sheet = sheets[0] if sheets else "Sheet1"
+                    viewport = _svc().get_sheet_viewport(active_sheet, 0, 0, 200, 40)
+                    for cell in viewport.get("cells", []):
+                        if cell.get("addr", "").upper() == req.ref.upper():
+                            formula = cell.get("raw", "")
+                            display = cell.get("display", "")
+                            break
+                except Exception:
+                    pass
+            if not formula:
+                raise HTTPException(400, f"Could not resolve formula for {req.ref}")
+            # Build context from params
+            context = req.context or ""
+            if not context:
+                try:
+                    info = _svc().get_project_info()
+                    params = info.get("params", {})
+                    if params:
+                        context = "Workbook parameters: " + ", ".join(
+                            f"{k}={v}" for k, v in list(params.items())[:10]
+                        )
+                except Exception:
+                    pass
+            return explain_formula(req.ref, formula, display, context)
+
+        elif req.kind == "output":
+            if not req.name:
+                raise HTTPException(400, "name is required for output explanation")
+            value = req.value
+            # If value not provided, resolve from latest build
+            if value is None:
+                try:
+                    data = _svc().get_scalar_outputs()
+                    scalars = data.get("scalars", {})
+                    value = scalars.get(req.name)
+                except Exception:
+                    pass
+            if value is None:
+                raise HTTPException(400, f"Could not resolve value for output {req.name!r}")
+            # Build context from output definitions and params
+            context = req.context or ""
+            if not context:
+                try:
+                    info = _svc().get_project_info()
+                    params = info.get("params", {})
+                    outputs_spec = [
+                        o for o in info.get("_spec", {}).get("outputs", [])
+                        if o.get("name") == req.name
+                    ]
+                    parts = []
+                    if params:
+                        parts.append("Parameters: " + ", ".join(
+                            f"{k}={v}" for k, v in list(params.items())[:10]
+                        ))
+                    if outputs_spec:
+                        parts.append(f"Output definition: {outputs_spec[0]}")
+                    context = "; ".join(parts)
+                except Exception:
+                    pass
+            return explain_output(req.name, value, context)
+
+        else:
+            raise HTTPException(400, f"Unknown explain kind: {req.kind!r}. Use 'formula' or 'output'.")
+
+    @router.post("/ai/draft")
+    async def ai_draft(req: AIDraftRequest) -> dict[str, Any]:
+        from fin123.llm.provider import draft_addin
+
+        result = draft_addin(req.description)
+        if not result.get("ok"):
+            return result
+
+        # Save as draft artifact
+        draft = _svc().draft_save(
+            artifact_type="scalar_plugin",
+            prompt=req.description,
+            code=result.get("code", result.get("content", "")),
+            model=result.get("model"),
+            provider=result.get("provider"),
+            prompt_hash=result.get("prompt_hash"),
+        )
+
+        return {
+            "ok": True,
+            "draft_id": draft["draft_id"],
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "detected_code_lines": len(result.get("code", "").splitlines()),
+            "next_steps": f"validate draft {draft['draft_id']}",
+        }
+
+    class AIReviseRequest(BaseModel):
+        draft_id: str
+        instruction: str
+
+    @router.post("/ai/revise")
+    async def ai_revise(req: AIReviseRequest) -> dict[str, Any]:
+        from fin123.llm.provider import revise_addin
+
+        # Load the parent draft
+        parent = _svc().draft_get(req.draft_id)
+        if parent is None:
+            raise HTTPException(404, f"Draft '{req.draft_id}' not found")
+
+        existing_code = parent.get("code", "")
+        original_prompt = parent.get("prompt", "")
+
+        result = revise_addin(existing_code, req.instruction, original_prompt)
+        if not result.get("ok"):
+            return result
+
+        # Save as new draft with revision_of link
+        draft = _svc().draft_save(
+            artifact_type=parent.get("artifact_type", "scalar_plugin"),
+            prompt=req.instruction,
+            code=result.get("code", result.get("content", "")),
+            model=result.get("model"),
+            provider=result.get("provider"),
+            prompt_hash=result.get("prompt_hash"),
+            derived_from=req.draft_id,
+        )
+
+        return {
+            "ok": True,
+            "draft_id": draft["draft_id"],
+            "revision_of": req.draft_id,
+            "provider": result.get("provider"),
+            "model": result.get("model"),
+            "detected_code_lines": len(result.get("code", "").splitlines()),
+        }
+
     return router
