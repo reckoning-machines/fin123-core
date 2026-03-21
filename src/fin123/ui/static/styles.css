@@ -1901,4 +1901,9 @@ body.mode-terminal #terminal-panel {
   display: flex;
   flex: 1;
 }
+body.mode-terminal #terminal-input-row {
+  order: -1;
+  border-top: none;
+  border-bottom: 1px solid var(--border);
+}
 body.mode-terminal #status-ribbon { display: flex; }
