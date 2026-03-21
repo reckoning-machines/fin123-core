@@ -1895,20 +1895,10 @@ body.mode-system #terminal-panel.collapsed #terminal-body {
 }
 
 /* ── Terminal Mode ── */
-body.mode-terminal #main {
-  grid-template-columns: 1fr;
-  flex: 0 0 auto;
-  max-height: 30vh;
-  min-height: 120px;
-}
-body.mode-terminal #side-panel { display: none; }
-body.mode-terminal #main.panel-collapsed {
-  grid-template-columns: 1fr;
-}
+body.mode-terminal #main { display: none; }
 body.mode-terminal #formulabar { display: none; }
 body.mode-terminal #terminal-panel {
   display: flex;
   flex: 1;
-  min-height: 200px;
 }
 body.mode-terminal #status-ribbon { display: flex; }
