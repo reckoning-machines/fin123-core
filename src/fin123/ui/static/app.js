@@ -26,6 +26,50 @@ const T = {
   precBorder: "rgba(168, 85, 247, 0.55)",
 };
 
+// ── Column width helpers ──
+const MIN_COL_W = 30;
+let _colWidths = {};  // colIndex -> width override (per active sheet)
+
+function colW(c) { return _colWidths[c] || COL_W; }
+
+// X offset of the left edge of visible column index ci (relative to canvas)
+function colX(ci) {
+  let x = HDR_W;
+  for (let i = 0; i < ci; i++) x += colW(S.scrollCol + i);
+  return x;
+}
+
+// Total visible columns that fit in the canvas
+function _visibleColCount() {
+  let x = HDR_W;
+  let count = 0;
+  while (x < canvas.width && (S.scrollCol + count) < 500) {
+    x += colW(S.scrollCol + count);
+    count++;
+  }
+  return count + 1;
+}
+
+// Which data column index is at canvas x coordinate mx?
+function colAtX(mx) {
+  let x = HDR_W;
+  let ci = 0;
+  while (x < mx && ci < 500) {
+    const c = S.scrollCol + ci;
+    const w = colW(c);
+    if (mx < x + w) return c;
+    x += w;
+    ci++;
+  }
+  return S.scrollCol + ci;
+}
+
+// Column resize drag state
+let _colResizing = false;
+let _colResizeIdx = -1;
+let _colResizeStartX = 0;
+let _colResizeStartW = 0;
+
 // ── State ──
 const S = {
   // Per-sheet state keyed by sheet name
@@ -69,6 +113,7 @@ function saveSheetState() {
     cells: S.cells, fmt: S.fmt,
     errors: S.errors,
     nRows: S.nRows, nCols: S.nCols,
+    colWidths: { ..._colWidths },
   };
 }
 
@@ -82,6 +127,7 @@ function restoreSheetState(name) {
     S.cells = st.cells; S.fmt = st.fmt;
     S.errors = st.errors;
     S.nRows = st.nRows; S.nCols = st.nCols;
+    _colWidths = st.colWidths || {};
   } else {
     S.scrollRow = 0; S.scrollCol = 0;
     S.curRow = 0; S.curCol = 0;
@@ -89,6 +135,7 @@ function restoreSheetState(name) {
     S.cells = {}; S.fmt = {};
     S.errors = {};
     S.nRows = 200; S.nCols = 40;
+    _colWidths = {};
   }
 }
 
@@ -214,7 +261,7 @@ function resizeCanvas() {
 }
 
 function visibleRows() { return Math.floor((canvas.height - HDR_H) / ROW_H) + 1; }
-function visibleCols() { return Math.floor((canvas.width - HDR_W) / COL_W) + 1; }
+function visibleCols() { return _visibleColCount(); }
 
 function draw() {
   const w = canvas.width, h = canvas.height;
@@ -237,7 +284,7 @@ function draw() {
     ctx.beginPath(); ctx.moveTo(HDR_W, y); ctx.lineTo(w, y); ctx.stroke();
   }
   for (let ci = 0; ci <= vCols; ci++) {
-    const x = HDR_W + ci * COL_W + 0.5;
+    const x = colX(ci) + 0.5;
     ctx.beginPath(); ctx.moveTo(x, HDR_H); ctx.lineTo(x, h); ctx.stroke();
   }
 
@@ -258,9 +305,10 @@ function draw() {
   ctx.fillStyle = T.selFill;
   for (let ri = Math.max(0, sr0vi); ri <= Math.min(vRows - 1, sr1vi); ri++) {
     for (let ci = Math.max(0, sc0vi); ci <= Math.min(vCols - 1, sc1vi); ci++) {
-      const x = HDR_W + ci * COL_W;
+      const cx = colX(ci);
+      const cw = colW(S.scrollCol + ci);
       const y = HDR_H + ri * ROW_H;
-      ctx.fillRect(x + 1, y + 1, COL_W - 1, ROW_H - 1);
+      ctx.fillRect(cx + 1, y + 1, cw - 1, ROW_H - 1);
     }
   }
 
@@ -268,11 +316,12 @@ function draw() {
   const acri = S.curRow - S.scrollRow;
   const acci = S.curCol - S.scrollCol;
   if (acri >= 0 && acri < vRows && acci >= 0 && acci < vCols) {
-    const x = HDR_W + acci * COL_W;
+    const cx = colX(acci);
+    const cw = colW(S.scrollCol + acci);
     const y = HDR_H + acri * ROW_H;
     ctx.strokeStyle = T.cursor;
     ctx.lineWidth = 2;
-    ctx.strokeRect(x + 0.5, y + 0.5, COL_W - 1, ROW_H - 1);
+    ctx.strokeRect(cx + 0.5, y + 0.5, cw - 1, ROW_H - 1);
   }
 
   // Precedent highlights
@@ -287,13 +336,14 @@ function draw() {
       const pri = pr - S.scrollRow;
       const pci = pc - S.scrollCol;
       if (pri >= 0 && pri < vRows && pci >= 0 && pci < vCols) {
-        const px = HDR_W + pci * COL_W;
+        const px = colX(pci);
+        const pw = colW(S.scrollCol + pci);
         const py = HDR_H + pri * ROW_H;
         ctx.fillStyle = T.precFill;
-        ctx.fillRect(px + 1, py + 1, COL_W - 1, ROW_H - 1);
+        ctx.fillRect(px + 1, py + 1, pw - 1, ROW_H - 1);
         ctx.strokeStyle = T.precBorder;
         ctx.lineWidth = 1;
-        ctx.strokeRect(px + 0.5, py + 0.5, COL_W, ROW_H);
+        ctx.strokeRect(px + 0.5, py + 0.5, pw, ROW_H);
       }
     }
   }
@@ -308,8 +358,9 @@ function draw() {
   for (let ci = 0; ci < vCols; ci++) {
     const c = S.scrollCol + ci;
     if (c >= S.nCols) break;
-    const x = HDR_W + ci * COL_W;
-    ctx.fillText(colLetter(c), x + COL_W / 2, HDR_H / 2);
+    const cx = colX(ci);
+    const cw = colW(c);
+    ctx.fillText(colLetter(c), cx + cw / 2, HDR_H / 2);
   }
 
   // Row headers
@@ -344,16 +395,17 @@ function draw() {
       const c = S.scrollCol + ci;
       if (r >= S.nRows || c >= S.nCols) continue;
       const a = addr(r, c);
-      const cellX = HDR_W + ci * COL_W;
+      const cellX = colX(ci);
+      const cw = colW(c);
       const cellY = HDR_H + ri * ROW_H;
 
       // Error marker: small red triangle in top-right corner
       if (S.errors[a]) {
         ctx.fillStyle = T.errMark;
         ctx.beginPath();
-        ctx.moveTo(cellX + COL_W - 1, cellY + 1);
-        ctx.lineTo(cellX + COL_W - 7, cellY + 1);
-        ctx.lineTo(cellX + COL_W - 1, cellY + 7);
+        ctx.moveTo(cellX + cw - 1, cellY + 1);
+        ctx.lineTo(cellX + cw - 7, cellY + 1);
+        ctx.lineTo(cellX + cw - 1, cellY + 7);
         ctx.closePath();
         ctx.fill();
       }
@@ -376,7 +428,7 @@ function draw() {
       const text = cell.display || cell.raw;
       ctx.save();
       ctx.beginPath();
-      ctx.rect(cellX + 1, cellY + 1, COL_W - 2, ROW_H - 2);
+      ctx.rect(cellX + 1, cellY + 1, cw - 2, ROW_H - 2);
       ctx.clip();
       ctx.fillText(text, x, y);
       ctx.restore();
@@ -387,11 +439,34 @@ function draw() {
 // ── Scroll management ──
 function ensureVisible(r, c) {
   const vr = visibleRows() - 1;
-  const vc = visibleCols() - 1;
   if (r < S.scrollRow) S.scrollRow = r;
   else if (r >= S.scrollRow + vr) S.scrollRow = r - vr + 1;
-  if (c < S.scrollCol) S.scrollCol = c;
-  else if (c >= S.scrollCol + vc) S.scrollCol = c - vc + 1;
+  // For columns, check if c is within visible range using actual widths
+  if (c < S.scrollCol) {
+    S.scrollCol = c;
+  } else {
+    let x = HDR_W;
+    let ci = 0;
+    while (S.scrollCol + ci < c) {
+      x += colW(S.scrollCol + ci);
+      ci++;
+    }
+    x += colW(c); // include the target column width
+    if (x > canvas.width) {
+      // Scroll right until column c fits
+      while (S.scrollCol < c) {
+        let testX = HDR_W;
+        let testCi = 0;
+        let sc = S.scrollCol + 1;
+        while (sc + testCi <= c) {
+          testX += colW(sc + testCi);
+          testCi++;
+        }
+        if (testX <= canvas.width) { S.scrollCol = sc; break; }
+        S.scrollCol++;
+      }
+    }
+  }
 }
 
 function moveCursor(dr, dc, shift) {
@@ -480,9 +555,9 @@ function startEdit(initialText) {
   const ci = S.curCol - S.scrollCol;
   if (ri < 0 || ci < 0) return;
   editor.style.display = "block";
-  editor.style.left = (HDR_W + ci * COL_W) + "px";
+  editor.style.left = colX(ci) + "px";
   editor.style.top = (HDR_H + ri * ROW_H) + "px";
-  editor.style.width = COL_W + "px";
+  editor.style.width = colW(S.scrollCol + ci) + "px";
   editor.style.height = ROW_H + "px";
 
   if (initialText !== undefined) {
@@ -1003,15 +1078,41 @@ editor.addEventListener("keydown", e => {
   else if (e.key === "Tab") { e.preventDefault(); commitEdit(); moveCursor(0, e.shiftKey ? -1 : 1, false); }
 });
 
+// ── Column resize: detect boundary near mouse ──
+function _colBoundaryAt(mx, my) {
+  // Returns the data column index whose RIGHT edge is near mx, or -1
+  if (my >= HDR_H) return -1; // only in header row
+  if (mx < HDR_W) return -1;
+  const threshold = 5;
+  let x = HDR_W;
+  for (let ci = 0; ci < visibleCols(); ci++) {
+    const c = S.scrollCol + ci;
+    x += colW(c);
+    if (Math.abs(mx - x) <= threshold) return c;
+  }
+  return -1;
+}
+
 // ── Mouse handling ──
 canvas.addEventListener("mousedown", e => {
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
 
+  // Column resize: check if clicking on a header boundary
+  const resizeCol = _colBoundaryAt(mx, my);
+  if (resizeCol >= 0) {
+    _colResizing = true;
+    _colResizeIdx = resizeCol;
+    _colResizeStartX = e.clientX;
+    _colResizeStartW = colW(resizeCol);
+    e.preventDefault();
+    return;
+  }
+
   if (mx < HDR_W || my < HDR_H) return;
 
-  const c = Math.floor((mx - HDR_W) / COL_W) + S.scrollCol;
+  const c = colAtX(mx);
   const r = Math.floor((my - HDR_H) / ROW_H) + S.scrollRow;
   if (r >= S.nRows || c >= S.nCols) return;
 
@@ -1023,18 +1124,66 @@ canvas.addEventListener("mousedown", e => {
   canvas.focus();
 });
 
+// Column resize: drag + release (on window so it works outside canvas)
+window.addEventListener("mousemove", e => {
+  if (_colResizing) {
+    const delta = e.clientX - _colResizeStartX;
+    const newW = Math.max(MIN_COL_W, _colResizeStartW + delta);
+    _colWidths[_colResizeIdx] = newW;
+    draw();
+    return;
+  }
+});
+
+window.addEventListener("mouseup", () => {
+  if (_colResizing) {
+    _colResizing = false;
+    _colResizeIdx = -1;
+  }
+});
+
 canvas.addEventListener("dblclick", e => {
   const rect = canvas.getBoundingClientRect();
   const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
+
+  // Double-click on column boundary: auto-fit
+  const resizeCol = _colBoundaryAt(mx, my);
+  if (resizeCol >= 0) {
+    // Measure max text width for visible cells in this column
+    ctx.font = FONT;
+    let maxW = 40;
+    for (let r = S.scrollRow; r < Math.min(S.nRows, S.scrollRow + visibleRows()); r++) {
+      const cell = S.cells[addr(r, resizeCol)];
+      if (cell) {
+        const text = cell.display || cell.raw;
+        const tw = ctx.measureText(text).width + 12;
+        if (tw > maxW) maxW = tw;
+      }
+    }
+    // Also measure header text
+    ctx.font = FONT_HDR;
+    const hw = ctx.measureText(colLetter(resizeCol)).width + 16;
+    if (hw > maxW) maxW = hw;
+    _colWidths[resizeCol] = Math.max(MIN_COL_W, Math.ceil(maxW));
+    draw();
+    return;
+  }
+
   if (mx < HDR_W || my < HDR_H) return;
   startEdit();
 });
 
-// Hover tracking
+// Hover tracking + resize cursor
 canvas.addEventListener("mousemove", e => {
   const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
   const my = e.clientY - rect.top;
+
+  // Show resize cursor when hovering near column boundary in header
+  const resizeCol = _colBoundaryAt(mx, my);
+  canvas.style.cursor = resizeCol >= 0 ? "col-resize" : (my < HDR_H ? "default" : "cell");
+
   if (my < HDR_H) { S.hoverRow = -1; draw(); return; }
   const r = Math.floor((my - HDR_H) / ROW_H) + S.scrollRow;
   if (r !== S.hoverRow) {
@@ -1044,6 +1193,7 @@ canvas.addEventListener("mousemove", e => {
 });
 
 canvas.addEventListener("mouseleave", () => {
+  canvas.style.cursor = "cell";
   if (S.hoverRow >= 0) {
     S.hoverRow = -1;
     draw();
@@ -1077,7 +1227,7 @@ canvas.addEventListener("contextmenu", e => {
   const my = e.clientY - rect.top;
   if (mx < HDR_W || my < HDR_H) return;
 
-  const c = Math.floor((mx - HDR_W) / COL_W) + S.scrollCol;
+  const c = colAtX(mx);
   const r = Math.floor((my - HDR_H) / ROW_H) + S.scrollRow;
   if (r >= S.nRows || c >= S.nCols) return;
 
