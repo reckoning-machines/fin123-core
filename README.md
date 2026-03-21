@@ -104,6 +104,29 @@ apply draft draft_0001
 commit
 ```
 
+## Runnable Demo
+
+A complete end-to-end demo is included in `demo/`.
+
+```bash
+# Automated CLI demo (commit, compare, sweep, grid)
+bash demo/run_demo.sh
+
+# Interactive Terminal Mode demo
+fin123 init demo_dcf --template benchmark_dcf
+fin123 ui demo_dcf
+# Switch to Terminal Mode, run commands from demo/terminal_commands.txt
+```
+
+The demo runs a 66,000-row AAPL DCF valuation through:
+- Base case and bull case commits
+- Scenario comparison (value_per_share: 1,402.63 -> 2,692.01)
+- 5-point revenue growth sweep
+- 3x3 sensitivity grid (revenue growth vs WACC)
+- AI add-in generation (requires `ANTHROPIC_API_KEY`)
+
+See `demo/README.md` for full instructions and talking points.
+
 ## What You Get
 
 - **Workbook engine** -- Polars-backed scalar DAG + table LazyFrame evaluation.

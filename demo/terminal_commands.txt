@@ -1,0 +1,44 @@
+# fin123 Terminal Mode Demo
+# Run these commands after: fin123 ui demo_dcf (then switch to Terminal Mode)
+#
+# Each line is a terminal command. Run them in order.
+
+# ── 1. Inspect the model ──
+status
+inputs
+outputs
+
+# ── 2. Base case ──
+set revenue_growth = 0.08
+set ebit_margin = 0.22
+set wacc = 0.10
+commit
+scenario save base
+
+# ── 3. Bull case ──
+set revenue_growth = 0.12
+set ebit_margin = 0.26
+set wacc = 0.08
+commit
+scenario save bull
+
+# ── 4. Compare ──
+compare base bull
+
+# ── 5. Sweep ──
+sweep revenue_growth 0.04 0.06 0.08 0.10 0.12 --outputs value_per_share enterprise_value implied_upside
+
+# ── 6. Grid ──
+grid revenue_growth 0.04 0.06 0.08 vs wacc 0.08 0.09 0.10 --output value_per_share
+
+# ── 7. Scenario list ──
+scenario list
+scenario show base
+scenario show bull
+
+# ── 8. AI Add-in (requires ANTHROPIC_API_KEY) ──
+ai draft addin "calculate compound annual growth rate from start and end values over n periods"
+draft show draft_0001
+validate draft draft_0001
+apply draft draft_0001
+commit

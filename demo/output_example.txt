@@ -1,0 +1,134 @@
+
+--- Setup: create project from benchmark_dcf template ---
+
+$ fin123 init demo_dcf --template benchmark_dcf
+Created project from template at /Users/jedgore/dev/fin123-core/demo_dcf
+
+
+--- 1. Base case: commit with default assumptions ---
+
+$ fin123 build .
+Build saved to: 20260321_030936_run_1
+Scalars: 31
+Tables: enriched, ticker_summary
+
+Base run_id: 20260321_030936_run_1
+
+--- 2. Bull case: higher growth, lower WACC ---
+
+$ fin123 commit .
+Committed snapshot: v0003
+
+$ fin123 build .
+Build saved to: 20260321_030937_run_2
+Scalars: 31
+Tables: enriched, ticker_summary
+
+Bull run_id: 20260321_030937_run_2
+
+--- 3. Compare: base vs bull ---
+
+$ fin123 diff run 20260321_030936_run_1 20260321_030937_run_2
+Run diff: 20260321_030936_run_1 vs 20260321_030937_run_2
+Status: different
+  workbook_spec_hash_match: False
+  params_hash_match: False
+  input_hashes_match: True
+  param ebit_margin: 0.22 → 0.26
+  param revenue_growth: 0.08 → 0.12
+  param wacc: 0.1 → 0.08
+  ebit_y1: 222935.59411200034 → 273227.4621440004 (delta=50291.86803200006, pct=22.5589%)
+  ebit_y2: 240770.44164096037 → 306014.75760128046 (delta=65244.31596032009, pct=27.0981%)
+  ebit_y3: 260032.0769722372 → 342736.52851343417 (delta=82704.45154119696, pct=31.8055%)
+  ebit_y4: 280834.6431300162 → 383864.9119350463 (delta=103030.2688050301, pct=36.6872%)
+  ebit_y5: 303301.4145804175 → 429928.7013672519 (delta=126627.28678683442, pct=41.7497%)
+  enterprise_value: 2805251.7971628103 → 5384022.521485334 (delta=2578770.724322524, pct=91.9265%)
+  equity_value: 2805251.7971628103 → 5384022.521485334 (delta=2578770.724322524, pct=91.9265%)
+  fcf_y1: 176119.11934848028 → 215849.69509376033 (delta=39730.575745280046, pct=22.5589%)
+  fcf_y2: 190208.6488963587 → 241751.65850501158 (delta=51543.00960865288, pct=27.0981%)
+  fcf_y3: 205425.3408080674 → 270761.857525613 (delta=65336.51671754557, pct=31.8055%)
+  fcf_y4: 221859.36807271282 → 303253.2804286866 (delta=81393.91235597376, pct=36.6872%)
+  fcf_y5: 239608.11751852985 → 339643.674080129 (delta=100035.55656159917, pct=41.7497%)
+  implied_upside: -0.999999995528404 → -0.999999991417821 (delta=4.110582985106248e-09, pct=-0.0000%)
+  nopat_y1: 176119.11934848028 → 215849.69509376033 (delta=39730.575745280046, pct=22.5589%)
+  nopat_y2: 190208.6488963587 → 241751.65850501158 (delta=51543.00960865288, pct=27.0981%)
+  nopat_y3: 205425.3408080674 → 270761.857525613 (delta=65336.51671754557, pct=31.8055%)
+  nopat_y4: 221859.36807271282 → 303253.2804286866 (delta=81393.91235597376, pct=36.6872%)
+  nopat_y5: 239608.11751852985 → 339643.674080129 (delta=100035.55656159917, pct=41.7497%)
+  pv_fcf: 771955.3427767841 → 1076119.3942728294 (delta=304164.0514960453, pct=39.4018%)
+  pv_terminal: 2033296.4543860264 → 4307903.127212505 (delta=2274606.6728264783, pct=111.8679%)
+  rev_y1: 1013343.6096000015 → 1050874.8544000015 (delta=37531.244799999986, pct=3.7037%)
+  rev_y2: 1094411.0983680016 → 1176979.8369280018 (delta=82568.7385600002, pct=7.5446%)
+  rev_y3: 1181963.986237442 → 1318217.4173593621 (delta=136253.43112192024, pct=11.5277%)
+  rev_y4: 1276521.1051364373 → 1476403.5074424858 (delta=199882.40230604843, pct=15.6584%)
+  rev_y5: 1378642.7935473523 → 1653571.9283355842 (delta=274929.1347882319, pct=19.9420%)
+  terminal_value: 3274644.2727532405 → 6329723.016947858 (delta=3055078.7441946175, pct=93.2950%)
+  value_per_share: 1402.6258985814052 → 2692.011260742667 (delta=1289.385362161262, pct=91.9265%)
+Table enriched: identical (66000 rows)
+Table ticker_summary: identical (10 rows)
+
+
+--- 4. Sweep: revenue_growth across 5 values ---
+
+$ fin123 batch build . --params-file /tmp/fin123_sweep.csv
+Batch build: 5 parameter set(s) from fin123_sweep.csv
+
+Batch ID: 4d52d216-85e1-4a32-80a7-40ee0616ddc6
+Total: 5  OK: 5  Failed: 0
+  [0] OK  run_id=20260321_030938_run_3
+  [1] OK  run_id=20260321_030938_run_4
+  [2] OK  run_id=20260321_030938_run_5
+  [3] OK  run_id=20260321_030938_run_6
+  [4] OK  run_id=20260321_030938_run_7
+
+
+--- 5. Grid: revenue_growth x wacc sensitivity ---
+
+$ fin123 batch build . --params-file /tmp/fin123_grid.csv
+Batch build: 9 parameter set(s) from fin123_grid.csv
+
+Batch ID: 94960fd5-93fb-491a-a164-f4c51f4f7d41
+Total: 9  OK: 9  Failed: 0
+  [0] OK  run_id=20260321_030938_run_8
+  [1] OK  run_id=20260321_030939_run_9
+  [2] OK  run_id=20260321_030939_run_10
+  [3] OK  run_id=20260321_030939_run_11
+  [4] OK  run_id=20260321_030939_run_12
+  [5] OK  run_id=20260321_030939_run_13
+  [6] OK  run_id=20260321_030939_run_14
+  [7] OK  run_id=20260321_030939_run_15
+  [8] OK  run_id=20260321_030939_run_16
+
+
+--- 6. Results ---
+
+Completed runs:
+  20260321_030936_run_1  value_per_share=1,402.63  enterprise_value=2,805,251.80
+  20260321_030937_run_2  value_per_share=2,692.01  enterprise_value=5,384,022.52
+  20260321_030938_run_3  value_per_share=1,917.85  enterprise_value=3,835,699.62
+  20260321_030938_run_4  value_per_share=2,091.28  enterprise_value=4,182,569.44
+  20260321_030938_run_5  value_per_share=2,277.63  enterprise_value=4,555,269.54
+  20260321_030938_run_6  value_per_share=2,477.63  enterprise_value=4,955,251.92
+  20260321_030938_run_7  value_per_share=2,692.01  enterprise_value=5,384,022.52
+  20260321_030938_run_8  value_per_share=1,917.85  enterprise_value=3,835,699.62
+  20260321_030939_run_10  value_per_share=1,403.35  enterprise_value=2,806,694.68
+  20260321_030939_run_11  value_per_share=2,091.28  enterprise_value=4,182,569.44
+  20260321_030939_run_12  value_per_share=1,765.09  enterprise_value=3,530,175.73
+  20260321_030939_run_13  value_per_share=1,526.02  enterprise_value=3,052,030.36
+  20260321_030939_run_14  value_per_share=2,277.63  enterprise_value=4,555,269.54
+  20260321_030939_run_15  value_per_share=1,919.82  enterprise_value=3,839,634.62
+  20260321_030939_run_16  value_per_share=1,657.65  enterprise_value=3,315,297.58
+  20260321_030939_run_9  value_per_share=1,620.99  enterprise_value=3,241,978.58
+
+--- Demo complete ---
+
+This demo showed:
+  - Deterministic commit with run_id
+  - Scenario comparison (base vs bull)
+  - Parameter sweep (5 revenue_growth values)
+  - Sensitivity grid (3x3 revenue_growth x wacc)
+
+For the full Terminal Mode experience (commit, compare, sweep, grid, AI):
+  fin123 ui demo_dcf
+  Then switch to Terminal Mode.
+
