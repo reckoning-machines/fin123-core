@@ -13,20 +13,20 @@ const FONT_HDR_SANS = "11px 'Segoe UI','Helvetica Neue',Arial,sans-serif";
 
 // ── Theme ──
 const T_DARK = {
-  bg:       "#1b1917",
-  hdr:      "#201e1b",
-  corner:   "#201e1b",
-  gridline: "#2a2622",
-  hdrText:  "#8e8376",
-  cellText: "#e7e2db",
-  fmText:   "#f59e0b",
+  bg:       "#16181B",
+  hdr:      "#1C1E22",
+  corner:   "#1C1E22",
+  gridline: "#23262B",
+  hdrText:  "#7C848D",
+  cellText: "#E8EAED",
+  fmText:   "#C7CCD1",  // derived/formula: softer than primary values
   errMark:  "#fb7185",
-  selFill:  "rgba(96, 165, 250, 0.12)",
-  selBorder:"rgba(96, 165, 250, 0.50)",
-  cursor:   "rgba(96, 165, 250, 0.75)",
-  precFill: "rgba(168, 85, 247, 0.15)",
-  precBorder: "rgba(168, 85, 247, 0.55)",
-  hoverRow: "rgba(255, 255, 255, 0.015)",
+  selFill:  "rgba(74, 158, 245, 0.12)",
+  selBorder:"rgba(74, 158, 245, 0.50)",
+  cursor:   "rgba(74, 158, 245, 0.75)",
+  precFill: "rgba(74, 158, 245, 0.15)",
+  precBorder: "rgba(74, 158, 245, 0.50)",
+  hoverRow: "rgba(255, 255, 255, 0.02)",
   cellFont: FONT_MONO,
   hdrFont:  FONT_HDR_MONO,
 };
@@ -449,7 +449,7 @@ function draw() {
         ctx.fillStyle = T.cellText;
       }
 
-      const text = cell.display || cell.raw;
+      const text = fmtValue(cell.display || cell.raw);
       ctx.save();
       ctx.beginPath();
       ctx.rect(cellX + 1, cellY + 1, cw - 2, ROW_H - 2);
@@ -1196,7 +1196,7 @@ canvas.addEventListener("dblclick", e => {
     for (let r = S.scrollRow; r < Math.min(S.nRows, S.scrollRow + visibleRows()); r++) {
       const cell = S.cells[addr(r, resizeCol)];
       if (cell) {
-        const text = cell.display || cell.raw;
+        const text = fmtValue(cell.display || cell.raw);
         const tw = ctx.measureText(text).width + 10;
         if (tw > maxW) maxW = tw;
       }
@@ -1506,7 +1506,7 @@ async function loadScalars() {
     for (const [k, v] of Object.entries(scalars)) {
       const item = document.createElement("div");
       item.className = "item";
-      item.innerHTML = `<span class="label">${esc(k)}</span><span class="val">${esc(String(v))}</span>`;
+      item.innerHTML = `<span class="label">${esc(k)}</span><span class="val">${esc(fmtValue(v))}</span>`;
       el.appendChild(item);
     }
   } catch (_) {}
@@ -1612,7 +1612,7 @@ function _renderTableView() {
   const displayRows = rows.slice(0, 200);
   for (const row of displayRows) {
     html += "<tr>";
-    for (const col of columns) html += "<td>" + esc(String(row[col] ?? "")) + "</td>";
+    for (const col of columns) html += "<td>" + esc(fmtValue(row[col] ?? "")) + "</td>";
     html += "</tr>";
   }
   html += "</tbody></table>";
@@ -1988,7 +1988,7 @@ async function doClearCache() {
     for (const [label, val] of stats) {
       const d = document.createElement("div");
       d.className = "cc-stat";
-      d.innerHTML = `<span class="label">${esc(label)}</span><span class="val">${esc(String(val))}</span>`;
+      d.innerHTML = `<span class="label">${esc(label)}</span><span class="val">${esc(fmtValue(val))}</span>`;
       el.appendChild(d);
     }
     ccOverlay.classList.add("visible");
@@ -2117,7 +2117,7 @@ async function loadImportReport() {
       if (val !== undefined) {
         const d = document.createElement("div");
         d.className = "import-stat";
-        d.innerHTML = `<span class="label">${esc(label)}</span><span class="val">${esc(String(val))}</span>`;
+        d.innerHTML = `<span class="label">${esc(label)}</span><span class="val">${esc(fmtValue(val))}</span>`;
         el.appendChild(d);
       }
     }
@@ -3013,17 +3013,41 @@ function termSection(title) {
   termAppend('<div class="term-section">' + termEsc(title) + '</div>');
 }
 
+// ── Shared numeric formatting (matches worksheet_viewer.js) ──
+
+function cleanFloat(n) {
+  return parseFloat(n.toFixed(10));
+}
+
+function formatNumber(value) {
+  if (value == null) return "";
+  if (typeof value !== "number" || !Number.isFinite(value)) return String(value);
+  const n = cleanFloat(value);
+  const abs = Math.abs(n);
+  const isIntegerLike = Math.abs(n - Math.round(n)) < 1e-9;
+  const useGrouping = abs >= 1000;
+  if (isIntegerLike) {
+    return n.toLocaleString("en-US", { useGrouping, maximumFractionDigits: 0 });
+  }
+  let maxFrac;
+  if (abs >= 1000) maxFrac = 2;
+  else if (abs >= 1) maxFrac = 3;
+  else maxFrac = 4;
+  return n.toLocaleString("en-US", { useGrouping, minimumFractionDigits: 0, maximumFractionDigits: maxFrac });
+}
+
+/** Format any value for display — numbers through formatNumber, rest as string. */
+function fmtValue(v) {
+  if (v == null) return "";
+  if (typeof v === "number" && Number.isFinite(v)) return formatNumber(v);
+  const n = Number(v);
+  if (typeof v === "string" && v !== "" && !isNaN(n) && isFinite(n)) return formatNumber(n);
+  return String(v);
+}
+
 function _fmtVal(v) {
   if (v == null || v === "" || v === "—") return "—";
-  const s = String(v);
-  const n = Number(v);
-  if (!isNaN(n) && s !== "" && isFinite(n)) {
-    if (Number.isInteger(n) && Math.abs(n) < 1e15) return n.toLocaleString("en-US");
-    if (Math.abs(n) >= 1000) return n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    if (Math.abs(n) < 0.01 && n !== 0) return n.toExponential(2);
-    return n.toLocaleString("en-US", { maximumFractionDigits: 4 });
-  }
-  return s;
+  return fmtValue(v);
 }
 
 function _fmtTs(ts) {
@@ -3268,7 +3292,7 @@ registerCmd("inputs", {
         termText("No parameters defined in workbook.");
         return;
       }
-      const rows = keys.map(k => [k, String(params[k])]);
+      const rows = keys.map(k => [k, fmtValue(params[k])]);
       termTable(["Parameter", "Value"], rows);
     } catch (err) { termError("Failed to load inputs: " + err.message); }
   }
@@ -3287,7 +3311,7 @@ registerCmd("outputs", {
         termText("No outputs available. Use 'commit' to build first.");
         return;
       }
-      const rows = keys.map(k => [k, String(scalars[k])]);
+      const rows = keys.map(k => [k, fmtValue(scalars[k])]);
       termTable(["Output", "Value"], rows);
     } catch (err) { termError("Failed to load outputs: " + err.message); }
   }
@@ -3310,7 +3334,7 @@ registerCmd("show input", {
       const val = params[name];
       const rows = [
         ["name", name],
-        ["value", String(val)],
+        ["value", fmtValue(val)],
         ["type", typeof val],
       ];
       termCard("Input: " + name, rows);
@@ -3335,7 +3359,7 @@ registerCmd("show output", {
       const val = scalars[name];
       const rows = [
         ["name", name],
-        ["value", String(val)],
+        ["value", fmtValue(val)],
         ["type", typeof val],
       ];
       if (data.run_id) rows.push(["run_id", data.run_id]);
@@ -3362,8 +3386,8 @@ registerCmd("set", {
       updateStatus();
       termStatus("Set Parameter", [
         ["parameter", name],
-        ["old value", String(res.old_value)],
-        ["new value", String(res.new_value)],
+        ["old value", fmtValue(res.old_value)],
+        ["new value", fmtValue(res.new_value)],
         ["state", "uncommitted"],
       ]);
     } catch (err) { termError("Failed to set: " + err.message); }
@@ -3452,7 +3476,7 @@ registerCmd("commit", {
       ]);
 
       if (result.n_scalars > 0) {
-        const rows = Object.entries(result.scalars).map(([k, v]) => [k, String(v)]);
+        const rows = Object.entries(result.scalars).map(([k, v]) => [k, fmtValue(v)]);
         termTable(["Output", "Value"], rows);
       }
 
