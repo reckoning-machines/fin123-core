@@ -319,12 +319,18 @@ def _build_compiled_columns(
                 ct = _polars_dtype_to_column_type(
                     view_table.df[col.source].dtype
                 )
+            # source_kind: STRING-typed source columns are labels/identifiers;
+            # all other source columns are data lookups from the build table.
+            sk = "label" if ct == ColumnType.STRING else "lookup"
             result.append(CompiledColumn(
                 name=col.canonical_name,
                 label=col.label or col.source,
                 column_type=ct,
                 display_format=col.display_format,
                 source=col.source,
+                source_kind=sk,
+                key_output=col.key_output,
+                editable=False,
             ))
         elif isinstance(col, DerivedColumnSpec):
             ct = col.column_type or ColumnType.FLOAT64
@@ -334,6 +340,9 @@ def _build_compiled_columns(
                 column_type=ct,
                 display_format=col.display_format,
                 expression=col.expression,
+                source_kind="formula",
+                key_output=col.key_output,
+                editable=False,
             ))
     return result
 

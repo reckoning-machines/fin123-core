@@ -331,11 +331,20 @@ var WorksheetViewer = (function () {
         tr.appendChild(flagCell);
       }
 
-      // Data cells
+      // Data cells — pass cell-level metadata if ws.cell_meta is present.
+      // Expected shape:
+      //   ws.cell_meta[rowIndex][colName] = {
+      //     semantic_role: "label" | "input" | "formula" | "lookup" | "meta",
+      //     key_output:    boolean,
+      //     editable:      boolean
+      //   }
+      // All fields optional. Overrides column-level and heuristic inference.
+      var rowMeta = (ws.cell_meta && ws.cell_meta[ri]) ? ws.cell_meta[ri] : null;
       for (var di = 0; di < columns.length; di++) {
         var colDef = columns[di];
         var cellValue = row[colDef.name];
-        var td = renderCell(cellValue, colDef);
+        var cellMeta = rowMeta ? (rowMeta[colDef.name] || null) : null;
+        var td = renderCell(cellValue, colDef, cellMeta);
         tr.appendChild(td);
       }
 
@@ -353,10 +362,177 @@ var WorksheetViewer = (function () {
   }
 
   // ────────────────────────────────────────────────────────────────
+  // Heuristic helpers (isolated fallbacks — each narrowly named)
+  //
+  // These are temporary inference rules used when upstream metadata
+  // (source_kind, key_output, editable) is not yet emitted.
+  // Each is self-contained so it can be removed once the compile
+  // pipeline provides explicit semantic fields.
+  // ────────────────────────────────────────────────────────────────
+
+  /** Temporary: column-name pattern → label role. */
+  var _LABEL_NAME_RE = /^(name|label|ticker|symbol|description|category|sector|id|item|metric|line_item)$/i;
+
+  function inferLabelRoleFromName(colDef) {
+    var t = colDef.column_type;
+    if (t === "str" || t === "object" || t === "string") return true;
+    return _LABEL_NAME_RE.test(colDef.name);
+  }
+
+  /** Temporary: column-name pattern → key-output emphasis. */
+  var _KEY_OUTPUT_NAME_RE = /^(value_per_share|implied_upside|nav_per_share|total_return|irr|npv|wacc|enterprise_value|equity_value|share_price|target_price|fair_value)$/i;
+
+  function inferKeyOutputFromName(colName) {
+    return _KEY_OUTPUT_NAME_RE.test(colName);
+  }
+
+  /**
+   * Temporary: infer semantic role from display_format shape.
+   * Used only when no explicit source_kind is available.
+   *   text/date format → "lookup" (reference fetch origin)
+   *   numeric format   → "formula" (computed value)
+   */
+  var _LOOKUP_FMT_TYPES = /^(text|date)$/;
+
+  function inferSemanticRoleFromDisplayFormat(fmt) {
+    if (!fmt || !fmt.type) return null;
+    return _LOOKUP_FMT_TYPES.test(fmt.type) ? "lookup" : "formula";
+  }
+
+  /**
+   * Value-type inference.
+   * Uses column_type for boolean/date, then rendered text for number/text.
+   * Handles null/error for contract completeness even though the renderer
+   * typically handles those before reaching the classifier.
+   */
+  var _NUMERIC_RE = /^[\(\-]?\$?[\d,]+\.?\d*%?\)?$/;
+
+  function inferValueType(rawValue, colDef, displayText) {
+    if (rawValue == null) return "blank";
+    if (isErrorValue(rawValue)) return "error";
+    var ct = colDef.column_type;
+    if (ct === "bool") return "boolean";
+    if (ct === "date" || ct === "datetime") return "date";
+    var trimmed = displayText ? displayText.trim() : "";
+    if (!trimmed) return "blank";
+    return _NUMERIC_RE.test(trimmed) ? "number" : "text";
+  }
+
+  /** Density inference from rendered text length. */
+  function inferDensityHint(displayText) {
+    var len = displayText ? displayText.trim().length : 0;
+    if (len >= 14) return "dense";
+    if (len >= 10) return "medium";
+    return "normal";
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  // Normalized semantic contract
+  //
+  // Produces a stable descriptor shape:
+  //   { semantic_role, key_output, editable, value_type, density_hint }
+  //
+  // semantic_role: "label" | "input" | "formula" | "lookup" | "meta" | null
+  //   "meta" is reserved for upstream use (e.g. provenance rows);
+  //   not yet emitted by any heuristic — included so the vocabulary
+  //   is stable when upstream begins tagging cells.
+  //
+  // editable: not yet mapped to CSS classes. Preserved in the
+  //   normalized contract for future renderer affordances (e.g.
+  //   editable-cell highlight, input cursor change).
+  //
+  // Precedence (highest → lowest):
+  //   1. Cell-level metadata   (cellMeta.semantic_role, etc.)
+  //   2. Column-level metadata (colDef.source_kind, colDef.key_output)
+  //   3. Heuristic fallbacks   (name patterns, display_format inference)
+  //   4. Value type            (boolean/date from column_type, then
+  //                             number/text/blank from rendered text)
+  // ────────────────────────────────────────────────────────────────
+
+  function normalizeCellSemantics(rawValue, cellMeta, colDef, displayText) {
+    var sem = {
+      semantic_role: null,
+      key_output:    false,
+      editable:      false,
+      value_type:    "text",   // "text" | "number" | "date" | "boolean" | "error" | "blank"
+      density_hint:  "normal"  // "normal" | "medium" | "dense"
+    };
+
+    // ── 1. Cell-level metadata (highest priority) ──
+    if (cellMeta) {
+      if (cellMeta.semantic_role) sem.semantic_role = cellMeta.semantic_role;
+      if (cellMeta.key_output === true) sem.key_output = true;
+      if (cellMeta.editable === true)   sem.editable = true;
+    }
+
+    // ── 2. Column-level metadata ──
+    if (!sem.semantic_role && colDef.source_kind) {
+      sem.semantic_role = colDef.source_kind;
+    }
+    if (!sem.key_output && colDef.key_output === true) {
+      sem.key_output = true;
+    }
+    if (!sem.editable && colDef.editable === true) {
+      sem.editable = true;
+    }
+
+    // ── 3. Heuristic fallbacks (only when no metadata resolved role) ──
+    if (!sem.semantic_role) {
+      if (inferLabelRoleFromName(colDef)) {
+        sem.semantic_role = "label";
+      } else if (!colDef.display_format && (colDef.column_type === "float64" || colDef.column_type === "int64")) {
+        sem.semantic_role = "input";
+      } else {
+        sem.semantic_role = inferSemanticRoleFromDisplayFormat(colDef.display_format);
+      }
+    }
+    if (!sem.key_output) {
+      sem.key_output = inferKeyOutputFromName(colDef.name);
+    }
+
+    // ── 4. Value type (column_type then rendered text) and density ──
+    sem.value_type = inferValueType(rawValue, colDef, displayText);
+    sem.density_hint = inferDensityHint(displayText);
+
+    return sem;
+  }
+
+  /**
+   * Map a normalized semantic descriptor to CSS class suffixes.
+   * Returns array of strings (without "ws-cell--" prefix).
+   *
+   * Not mapped to classes (intentionally):
+   *   sem.editable  — preserved for future renderer affordances
+   *                   (e.g. editable-cell border, cursor style)
+   *   sem.semantic_role === "meta" — reserved vocabulary, not yet
+   *                   emitted upstream; will need a CSS rule when used
+   */
+  function classesFromSemantics(sem) {
+    var classes = [];
+
+    // Source role (mutually exclusive)
+    if (sem.semantic_role) classes.push(sem.semantic_role);
+
+    // Value type (independent of role)
+    if (sem.value_type === "number")  classes.push("numeric");
+    else if (sem.value_type === "text")    classes.push("text");
+    else if (sem.value_type === "blank")   classes.push("blank");
+
+    // Emphasis (independent of role)
+    if (sem.key_output) classes.push("key-output");
+
+    // Density
+    if (sem.density_hint === "dense")  classes.push("dense");
+    else if (sem.density_hint === "medium") classes.push("dense-md");
+
+    return classes;
+  }
+
+  // ────────────────────────────────────────────────────────────────
   // Render: individual cell
   // ────────────────────────────────────────────────────────────────
 
-  function renderCell(value, colDef) {
+  function renderCell(value, colDef, cellMeta) {
     var attrs = { "data-column": colDef.name };
 
     // Null
@@ -373,19 +549,23 @@ var WorksheetViewer = (function () {
       return el("td", attrs, [text(value.error)]);
     }
 
-    // Normal value
-    attrs.className = "ws-cell ws-cell--" + colDef.column_type;
-
-    // Apply display format if present
+    // Format display value
     var displayText;
     if (colDef.display_format) {
       displayText = applyDisplayFormat(value, colDef.display_format);
     }
     if (displayText == null) {
-      // Default formatting by type
       displayText = defaultFormat(value, colDef.column_type);
     }
 
+    // Normalize semantics → CSS classes
+    var sem = normalizeCellSemantics(value, cellMeta || null, colDef, displayText);
+    var semClasses = classesFromSemantics(sem);
+    var classList = "ws-cell ws-cell--" + colDef.column_type;
+    for (var i = 0; i < semClasses.length; i++) {
+      classList += " ws-cell--" + semClasses[i];
+    }
+    attrs.className = classList;
     return el("td", attrs, [text(displayText)]);
   }
 

@@ -31,6 +31,7 @@ class SourceColumnSpec(BaseModel):
     label: str | None = None
     display_format: DisplayFormat | None = None
     column_type: ColumnType | None = None
+    key_output: bool = False
 
     @property
     def canonical_name(self) -> str:
@@ -47,6 +48,7 @@ class DerivedColumnSpec(BaseModel):
     label: str | None = None
     display_format: DisplayFormat | None = None
     column_type: ColumnType | None = None
+    key_output: bool = False
 
     @property
     def canonical_name(self) -> str:

@@ -46,6 +46,7 @@ columns:
   - name: earnings_yield
     expression: "eps_ntm / px_last"
     label: "Earnings Yield"
+    key_output: true
     display_format:
       type: percent
       places: 2

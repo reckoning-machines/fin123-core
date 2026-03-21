@@ -9,13 +9,14 @@
    ──────────────────────────────────────────────────────────────── */
 
 .ws-viewer {
-  --ws-font-family: system-ui, -apple-system, sans-serif;
-  --ws-font-size: 13px;
-  --ws-font-mono: 'SF Mono', 'Cascadia Code', 'Consolas', monospace;
-  --ws-header-bg: #f5f5f5;
-  --ws-header-border: #d0d0d0;
-  --ws-cell-border: #e5e5e5;
-  --ws-row-hover-bg: #f0f4ff;
+  --ws-font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --ws-font-size: 12px;
+  --ws-font-mono: 'JetBrains Mono', 'SF Mono', ui-monospace, 'Cascadia Code', 'Consolas', monospace;
+  --ws-bg: #FFFFFF;
+  --ws-header-bg: #F3F3F3;
+  --ws-header-border: #D4D4D4;
+  --ws-cell-border: #F2F2F2;
+  --ws-row-hover-bg: #F5F8F5;
   --ws-error-bg: #fff0f0;
   --ws-error-color: #cc0000;
   --ws-flag-info-color: #0066cc;
@@ -23,11 +24,13 @@
   --ws-flag-error-color: #cc0000;
   --ws-summary-bg: #fff8f0;
   --ws-summary-border: #e8d8c0;
-  --ws-provenance-bg: #f8f8f8;
-  --ws-provenance-border: #e0e0e0;
+  --ws-provenance-bg: #F9F9F9;
+  --ws-provenance-border: #E6E6E6;
   --ws-sticky-z: 10;
-  --ws-text-color: #1a1a1a;
+  --ws-text-color: #111111;
   --ws-text-dim: #666666;
+  --ws-text-soft: #222222;
+  --ws-select: #107C41;
 }
 
 /* ────────────────────────────────────────────────────────────────
@@ -38,7 +41,8 @@
   font-family: var(--ws-font-family);
   font-size: var(--ws-font-size);
   color: var(--ws-text-color);
-  line-height: 1.4;
+  background: var(--ws-bg);
+  line-height: 1;
 }
 
 /* ────────────────────────────────────────────────────────────────
@@ -93,11 +97,14 @@
   position: sticky;
   z-index: var(--ws-sticky-z);
   background: var(--ws-header-bg);
-  border-bottom: 2px solid var(--ws-header-border);
-  padding: 6px 10px;
+  border-bottom: 1px solid var(--ws-header-border);
+  padding: 0 4px;
+  height: 18px;
   text-align: left;
-  font-weight: 600;
-  font-size: calc(var(--ws-font-size) - 1px);
+  font-family: var(--ws-font-family);
+  font-weight: 500;
+  font-size: 11px;
+  color: #333333;
   white-space: nowrap;
 }
 
@@ -105,7 +112,7 @@
   top: 0;
   border-bottom: 1px solid var(--ws-header-border);
   text-align: center;
-  font-weight: 600;
+  font-weight: 500;
   color: var(--ws-text-dim);
 }
 
@@ -115,7 +122,7 @@
 
 /* When group row exists, column headers sit below it */
 .ws-table thead .ws-header-row th {
-  border-bottom: 2px solid var(--ws-header-border);
+  border-bottom: 1px solid var(--ws-header-border);
 }
 
 /* Dynamic top offset set via JS for correct sticky stacking */
@@ -135,9 +142,11 @@
    ──────────────────────────────────────────────────────────────── */
 
 .ws-table tbody td {
-  padding: 4px 10px;
+  padding: 0 4px;
+  height: 18px;
   border-bottom: 1px solid var(--ws-cell-border);
   white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 
 .ws-row:hover td {
@@ -148,18 +157,12 @@
 .ws-cell--float64,
 .ws-cell--int64 {
   text-align: right;
-  font-family: var(--ws-font-mono);
+  padding-right: 6px;
 }
 
 /* Boolean */
 .ws-cell--bool {
   text-align: center;
-}
-
-/* Date/datetime */
-.ws-cell--date,
-.ws-cell--datetime {
-  font-family: var(--ws-font-mono);
 }
 
 /* Null cells */
@@ -175,9 +178,8 @@
 .ws-cell--error {
   background: var(--ws-error-bg);
   color: var(--ws-error-color);
-  font-family: var(--ws-font-mono);
   font-weight: 600;
-  font-size: calc(var(--ws-font-size) - 1px);
+  font-size: 11px;
 }
 
 /* ────────────────────────────────────────────────────────────────
@@ -185,7 +187,8 @@
    ──────────────────────────────────────────────────────────────── */
 
 .ws-flag-cell {
-  padding: 4px 6px;
+  padding: 0 4px;
+  height: 18px;
   border-bottom: 1px solid var(--ws-cell-border);
   white-space: nowrap;
   width: 1%;
@@ -227,13 +230,14 @@
 .ws-provenance summary {
   padding: 6px 12px;
   cursor: pointer;
+  font-family: var(--ws-font-family);
   font-weight: 600;
   color: var(--ws-text-dim);
   user-select: none;
 }
 
 .ws-provenance summary:focus-visible {
-  outline: 2px solid var(--ws-flag-info-color);
+  outline: 2px solid var(--ws-select);
   outline-offset: -2px;
 }
 
@@ -256,10 +260,62 @@
 }
 
 /* ────────────────────────────────────────────────────────────────
+   Semantic cell roles
+   ──────────────────────────────────────────────────────────────── */
+
+/* Numeric: right-aligned (supplements type-based alignment) */
+.ws-cell--numeric {
+  text-align: right;
+  padding-right: 6px;
+}
+
+/* Text: left-aligned */
+.ws-cell--text {
+  text-align: left;
+}
+
+/* Label: dim, same family */
+.ws-cell--label {
+  color: var(--ws-text-dim);
+}
+
+/* Input: darkest value text */
+.ws-cell--input {
+  color: #000000;
+}
+
+/* Formula: slightly softer than inputs */
+.ws-cell--formula {
+  color: var(--ws-text-soft);
+}
+
+/* Lookup: same as formula unless distinguished */
+.ws-cell--lookup {
+  color: var(--ws-text-soft);
+}
+
+/* Key outputs: semibold only */
+.ws-cell--key-output {
+  font-weight: 600;
+}
+
+/* Dense values — medium density */
+.ws-cell--dense-md {
+  font-size: 11px;
+}
+
+/* Dense values — high density */
+.ws-cell--dense {
+  font-size: 11px;
+  letter-spacing: -0.01em;
+}
+
+/* ────────────────────────────────────────────────────────────────
    Title
    ──────────────────────────────────────────────────────────────── */
 
 .ws-title {
+  font-family: var(--ws-font-family);
   font-size: calc(var(--ws-font-size) + 3px);
   font-weight: 700;
   margin-bottom: 8px;

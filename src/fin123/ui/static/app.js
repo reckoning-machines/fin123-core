@@ -2,29 +2,53 @@
 "use strict";
 
 // ── Constants ──
-const COL_W = 90;
-const ROW_H = 22;
-const HDR_H = 22;  // column header height
-const HDR_W = 46;  // row header width
-const FONT = "12px 'JetBrains Mono','SF Mono','Cascadia Code','Fira Code','Consolas',monospace";
-const FONT_HDR = "11px 'JetBrains Mono','SF Mono','Cascadia Code','Fira Code','Consolas',monospace";
+const COL_W = 74;   // Excel ~85% zoom column width
+const ROW_H = 18;   // dense row height (Excel ~85%)
+const HDR_H = 18;   // column header matches row height
+const HDR_W = 44;   // row-number gutter
+const FONT_MONO = "12px 'JetBrains Mono','SF Mono','Cascadia Code','Fira Code','Consolas',monospace";
+const FONT_HDR_MONO = "11px 'JetBrains Mono','SF Mono','Cascadia Code','Fira Code','Consolas',monospace";
+const FONT_SANS = "12px 'Segoe UI','Helvetica Neue',Arial,sans-serif";
+const FONT_HDR_SANS = "11px 'Segoe UI','Helvetica Neue',Arial,sans-serif";
 
 // ── Theme ──
-const T = {
+const T_DARK = {
   bg:       "#1b1917",
   hdr:      "#201e1b",
   corner:   "#201e1b",
   gridline: "#2a2622",
   hdrText:  "#8e8376",
   cellText: "#e7e2db",
-  fmText:   "#f59e0b",  // formula cells
-  errMark:  "#fb7185",  // error marker
+  fmText:   "#f59e0b",
+  errMark:  "#fb7185",
   selFill:  "rgba(96, 165, 250, 0.12)",
   selBorder:"rgba(96, 165, 250, 0.50)",
   cursor:   "rgba(96, 165, 250, 0.75)",
   precFill: "rgba(168, 85, 247, 0.15)",
   precBorder: "rgba(168, 85, 247, 0.55)",
+  hoverRow: "rgba(255, 255, 255, 0.015)",
+  cellFont: FONT_MONO,
+  hdrFont:  FONT_HDR_MONO,
 };
+const T_LIGHT = {
+  bg:       "#FFFFFF",
+  hdr:      "#F3F3F3",
+  corner:   "#F3F3F3",
+  gridline: "#F2F2F2",
+  hdrText:  "#333333",
+  cellText: "#111111",
+  fmText:   "#222222",  // formula/derived: slightly softer than inputs
+  errMark:  "#cc0000",
+  selFill:  "rgba(16, 124, 65, 0.06)",
+  selBorder:"rgba(16, 124, 65, 0.25)",
+  cursor:   "#107C41",
+  precFill: "rgba(16, 124, 65, 0.08)",
+  precBorder: "rgba(16, 124, 65, 0.40)",
+  hoverRow: "rgba(0, 0, 0, 0.02)",
+  cellFont: FONT_SANS,
+  hdrFont:  FONT_HDR_SANS,
+};
+let T = T_LIGHT;
 
 // ── Column width helpers ──
 const MIN_COL_W = 30;
@@ -292,7 +316,7 @@ function draw() {
   if (S.hoverRow >= 0) {
     const hri = S.hoverRow - S.scrollRow;
     if (hri >= 0 && hri < vRows) {
-      ctx.fillStyle = "rgba(255, 255, 255, 0.015)";
+      ctx.fillStyle = T.hoverRow;
       ctx.fillRect(HDR_W, HDR_H + hri * ROW_H, w - HDR_W, ROW_H);
     }
   }
@@ -351,7 +375,7 @@ function draw() {
   // Column headers
   ctx.fillStyle = T.hdr;
   ctx.fillRect(HDR_W, 0, w - HDR_W, HDR_H);
-  ctx.font = FONT_HDR;
+  ctx.font = T.hdrFont;
   ctx.fillStyle = T.hdrText;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
@@ -386,7 +410,7 @@ function draw() {
   ctx.beginPath(); ctx.moveTo(HDR_W + 0.5, 0); ctx.lineTo(HDR_W + 0.5, h); ctx.stroke();
 
   // Cell values + error markers + font color
-  ctx.font = FONT;
+  ctx.font = T.cellFont;
   ctx.textAlign = "left";
   ctx.textBaseline = "middle";
   for (let ri = 0; ri < vRows; ri++) {
@@ -430,7 +454,14 @@ function draw() {
       ctx.beginPath();
       ctx.rect(cellX + 1, cellY + 1, cw - 2, ROW_H - 2);
       ctx.clip();
-      ctx.fillText(text, x, y);
+      // Right-align numeric display values
+      const trimmed = text.trim();
+      if (trimmed && /^[\(\-]?\$?[\d,]+\.?\d*%?\)?$/.test(trimmed)) {
+        ctx.textAlign = "right";
+        ctx.fillText(text, cellX + cw - 6, y);
+      } else {
+        ctx.fillText(text, x, y);
+      }
       ctx.restore();
     }
   }
@@ -1151,18 +1182,18 @@ canvas.addEventListener("dblclick", e => {
   const resizeCol = _colBoundaryAt(mx, my);
   if (resizeCol >= 0) {
     // Measure max text width for visible cells in this column
-    ctx.font = FONT;
+    ctx.font = T.cellFont;
     let maxW = 40;
     for (let r = S.scrollRow; r < Math.min(S.nRows, S.scrollRow + visibleRows()); r++) {
       const cell = S.cells[addr(r, resizeCol)];
       if (cell) {
         const text = cell.display || cell.raw;
-        const tw = ctx.measureText(text).width + 12;
+        const tw = ctx.measureText(text).width + 10;
         if (tw > maxW) maxW = tw;
       }
     }
     // Also measure header text
-    ctx.font = FONT_HDR;
+    ctx.font = T.hdrFont;
     const hw = ctx.measureText(colLetter(resizeCol)).width + 16;
     if (hw > maxW) maxW = hw;
     _colWidths[resizeCol] = Math.max(MIN_COL_W, Math.ceil(maxW));
@@ -2880,6 +2911,7 @@ function setMode(mode) {
   localStorage.setItem("fin123_uiMode", mode);
   document.body.className = document.body.className.replace(/mode-\S+/g, "").trim();
   document.body.classList.add("mode-" + mode);
+  T = mode === "spreadsheet" ? T_LIGHT : T_DARK;
   document.querySelectorAll(".mode-btn").forEach(btn => {
     btn.classList.toggle("active", btn.dataset.mode === mode);
   });

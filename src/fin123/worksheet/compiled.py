@@ -20,7 +20,30 @@ from fin123.worksheet.types import ColumnType, DisplayFormat
 
 
 class CompiledColumn(BaseModel):
-    """Column metadata in the compiled artifact."""
+    """Column metadata in the compiled artifact.
+
+    Structural fields (source, expression) record compile-time provenance.
+
+    Semantic spreadsheet fields are consumed by worksheet_viewer.js to
+    classify cells without renderer heuristics:
+
+      source_kind: Provenance role of this column's values.
+        The compiler currently emits:
+          "label"   — source column with STRING column_type (identifier/text)
+          "lookup"  — source column with numeric/date/bool column_type
+          "formula" — derived column (row-local expression)
+        Reserved for future upstream use (not yet emitted by compiler):
+          "input"   — user-editable scalar parameter
+          "meta"    — structural/provenance metadata column
+
+      key_output: True if this column is a primary summary readout
+        (e.g. value_per_share, implied_upside). Declared via
+        ``key_output: true`` in the worksheet spec YAML.
+
+      editable: Whether the cell value is user-editable. Always False
+        for compiled worksheets (read-only views). Reserved for future
+        interactive worksheet support.
+    """
 
     name: str
     label: str
@@ -28,6 +51,9 @@ class CompiledColumn(BaseModel):
     display_format: DisplayFormat | None = None
     source: str | None = None
     expression: str | None = None
+    source_kind: str | None = None
+    key_output: bool = False
+    editable: bool = False
 
 
 # ────────────────────────────────────────────────────────────────

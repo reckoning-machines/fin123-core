@@ -631,3 +631,143 @@ class TestPocPricedEstimates:
         assert ws.rows[0]["pe_ratio"] == {"error": "#DIV/0!"}
         assert ws.error_summary is not None
         assert ws.error_summary.total_errors == 1
+
+
+# ────────────────────────────────────────────────────────────────
+# Semantic column metadata (source_kind, key_output, editable)
+# ────────────────────────────────────────────────────────────────
+
+
+class TestSemanticColumnMetadata:
+    """Tests for source_kind, key_output, and editable emission."""
+
+    def test_source_string_column_is_label(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [{"source": "name"}],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        col = ws.columns[0]
+        assert col.source_kind == "label"
+
+    def test_source_float_column_is_lookup(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [{"source": "revenue"}],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        col = ws.columns[0]
+        assert col.source_kind == "lookup"
+
+    def test_source_int_column_is_lookup(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [{"source": "id"}],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        col = ws.columns[0]
+        assert col.source_kind == "lookup"
+
+    def test_source_date_column_is_lookup(self) -> None:
+        import datetime
+        df = pl.DataFrame({"d": [datetime.date(2025, 1, 1)]})
+        schema = [ColumnSchema(name="d", dtype=ColumnType.DATE)]
+        vt = from_polars(df, schema, source_label="date test")
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [{"source": "d"}],
+        })
+        ws = compile_worksheet(vt, spec, compiled_at=FROZEN_TIME)
+        assert ws.columns[0].source_kind == "lookup"
+
+    def test_source_bool_column_is_lookup(self) -> None:
+        df = pl.DataFrame({"flag": [True, False]})
+        schema = [ColumnSchema(name="flag", dtype=ColumnType.BOOL)]
+        vt = from_polars(df, schema, source_label="bool test")
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [{"source": "flag"}],
+        })
+        ws = compile_worksheet(vt, spec, compiled_at=FROZEN_TIME)
+        assert ws.columns[0].source_kind == "lookup"
+
+    def test_derived_column_is_formula(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [
+                {"source": "revenue"},
+                {"source": "cost"},
+                {"name": "profit", "expression": "revenue - cost"},
+            ],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        assert ws.columns[0].source_kind == "lookup"
+        assert ws.columns[1].source_kind == "lookup"
+        assert ws.columns[2].source_kind == "formula"
+
+    def test_key_output_from_spec(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [
+                {"source": "revenue"},
+                {"source": "cost"},
+                {
+                    "name": "profit",
+                    "expression": "revenue - cost",
+                    "key_output": True,
+                },
+            ],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        assert ws.columns[0].key_output is False
+        assert ws.columns[1].key_output is False
+        assert ws.columns[2].key_output is True
+
+    def test_key_output_on_source_column(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [{"source": "revenue", "key_output": True}],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        assert ws.columns[0].key_output is True
+
+    def test_key_output_defaults_false(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [{"source": "revenue"}],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        assert ws.columns[0].key_output is False
+
+    def test_editable_always_false(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [
+                {"source": "name"},
+                {"source": "revenue"},
+                {"name": "profit", "expression": "revenue - cost"},
+            ],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        for col in ws.columns:
+            assert col.editable is False
+
+    def test_semantic_fields_survive_json_roundtrip(self, simple_vt: ViewTable) -> None:
+        spec = parse_worksheet_view({
+            "name": "test",
+            "columns": [
+                {"source": "name"},
+                {"source": "revenue"},
+                {
+                    "name": "margin",
+                    "expression": "(revenue - cost) / revenue",
+                    "key_output": True,
+                },
+            ],
+        })
+        ws = compile_worksheet(simple_vt, spec, compiled_at=FROZEN_TIME)
+        roundtripped = CompiledWorksheet.from_json(ws.to_json())
+        for orig, rt in zip(ws.columns, roundtripped.columns):
+            assert rt.source_kind == orig.source_kind
+            assert rt.key_output == orig.key_output
+            assert rt.editable == orig.editable

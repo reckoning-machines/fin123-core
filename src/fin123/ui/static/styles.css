@@ -1808,6 +1808,72 @@ body.mode-spreadsheet #main.panel-collapsed {
 body.mode-spreadsheet #terminal-panel { display: none !important; }
 body.mode-spreadsheet #status-ribbon { display: none; }
 
+/* ── Spreadsheet Mode — Light Excel chrome ── */
+body.mode-spreadsheet {
+  --bg:          #F3F3F3;
+  --bg-grid:     #FFFFFF;
+  --bg-header:   #F3F3F3;
+  --bg-panel:    #FAFAFA;
+  --bg-input:    #FFFFFF;
+  --bg-overlay:  rgba(240, 240, 240, 0.92);
+  --gridline:    #F2F2F2;
+  --border:      #D4D4D4;
+  --fg:          #111111;
+  --fg-dim:      #666666;
+  --fg-muted:    #444444;
+  --accent:      #107C41;
+  --accent-glow: rgba(16, 124, 65, 0.15);
+  --accent-dim:  rgba(16, 124, 65, 0.25);
+  --sel-fill:    rgba(16, 124, 65, 0.06);
+  --sel-border:  rgba(16, 124, 65, 0.50);
+  --select:      #107C41;
+  --dirty:       #b8860b;
+  --error:       #cc0000;
+  --success:     #107C41;
+  --font:        'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  --ring:        0 0 0 2px rgba(16, 124, 65, 0.25);
+}
+
+body.mode-spreadsheet #menubar {
+  background: #F3F3F3;
+  border-bottom-color: #D4D4D4;
+}
+body.mode-spreadsheet #logo {
+  color: #107C41;
+}
+body.mode-spreadsheet .menu-item {
+  color: #444444;
+}
+body.mode-spreadsheet .menu-item:hover {
+  background: rgba(0, 0, 0, 0.06);
+  color: #111111;
+}
+body.mode-spreadsheet .mode-btn.active {
+  color: #107C41;
+}
+body.mode-spreadsheet #formulabar {
+  background: #FAFAFA;
+  border-bottom-color: #D4D4D4;
+}
+body.mode-spreadsheet #cell-addr {
+  color: #666666;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  border-right-color: #D4D4D4;
+}
+body.mode-spreadsheet #fx-label {
+  color: #666666;
+}
+body.mode-spreadsheet #cell-editor {
+  background: #FFFFFF;
+  color: #111111;
+  border-color: #107C41;
+  font-family: 'Segoe UI', 'Helvetica Neue', Arial, sans-serif;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  padding: 0 4px;
+  line-height: 1;
+}
+
 /* ── System Mode ── */
 body.mode-system #terminal-panel {
   display: flex;
