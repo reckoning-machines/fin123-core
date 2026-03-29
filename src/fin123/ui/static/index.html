@@ -18,6 +18,7 @@
         <button class="mode-btn active" data-mode="spreadsheet" title="Spreadsheet Mode">Spreadsheet</button>
         <button class="mode-btn" data-mode="system" title="System Mode">System</button>
         <button class="mode-btn" data-mode="terminal" title="Terminal Mode">Terminal</button>
+        <button class="mode-btn" data-mode="surface" title="Surface Mode">Surface</button>
       </div>
       <span class="menu-item" id="btn-save" title="Ctrl+S">Commit</span>
       <span class="menu-item" id="btn-sync">Sync</span>
@@ -208,6 +209,51 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <!-- Surface Mode container -->
+  <div id="surface-container">
+    <div id="sf-canvas-wrap">
+      <canvas id="surface-canvas"></canvas>
+      <canvas id="surface-overlay"></canvas>
+      <div id="sf-loading">Loading surface&hellip;</div>
+    </div>
+    <div id="surface-panel">
+      <div class="sf-label">PRICE TARGET</div>
+      <div id="sf-value">&mdash;</div>
+      <div id="sf-axes">
+        <div class="sf-axis">
+          <div class="sf-axis-header">
+            <span class="sf-coord-label">Revenue Growth</span>
+            <span class="sf-coord-val" id="sf-coord-x">&mdash;</span>
+          </div>
+          <div class="sf-axis-track"><div class="sf-axis-fill" id="sf-axis-x-fill"></div></div>
+        </div>
+        <div class="sf-axis">
+          <div class="sf-axis-header">
+            <span class="sf-coord-label">EBIT Margin</span>
+            <span class="sf-coord-val" id="sf-coord-y">&mdash;</span>
+          </div>
+          <div class="sf-axis-track"><div class="sf-axis-fill" id="sf-axis-y-fill"></div></div>
+        </div>
+      </div>
+      <div class="sf-divider"></div>
+      <div class="sf-knob">
+        <div class="sf-knob-header">
+          <span class="sf-label">WACC</span>
+          <span class="sf-knob-val" id="sf-knob-wacc-val">10.0%</span>
+        </div>
+        <input type="range" id="sf-knob-wacc" min="0.06" max="0.15" step="0.005" value="0.10">
+      </div>
+      <div class="sf-knob">
+        <div class="sf-knob-header">
+          <span class="sf-label">Terminal Growth</span>
+          <span class="sf-knob-val" id="sf-knob-tg-val">2.5%</span>
+        </div>
+        <input type="range" id="sf-knob-tg" min="0.01" max="0.04" step="0.005" value="0.025">
+      </div>
+      <div id="sf-status" class="sf-status"></div>
     </div>
   </div>
 

@@ -6,15 +6,16 @@ Spreadsheet models that behave like software.
 fin123-core is the standalone, open-source core of the fin123 platform.
 It runs entirely on your machine -- no database, no server, no account required.
 
-## What's New in 0.5.0
+## What's New in 0.5.1
 
+- **Surface Mode** -- explore a model as a 2D heatmap. Two axis variables, live cursor interaction, secondary knobs that deform the surface in real time. Every point is a real model evaluation.
 - **Terminal Mode** -- operate models as programs. `commit` is the primary execution action.
 - **Scenarios** -- label committed runs, load them back, compare side-by-side.
 - **Sweeps** -- run a model across one parameter. Each row is a real execution with a run_id.
 - **Grids** -- run a model across two parameters. Matrix output in terminal.
 - **AI Workbench** -- generate add-ins as governed code artifacts. Draft, validate, apply, commit.
 - **Plugin Manager** -- applied add-ins load into runtime during builds.
-- **Three Modes** -- Spreadsheet (author), System (inspect), Terminal (operate).
+- **Four Modes** -- Spreadsheet (author), System (inspect), Terminal (operate), Surface (explore).
 
 ## Core Concepts
 
@@ -32,15 +33,27 @@ It runs entirely on your machine -- no database, no server, no account required.
 
 ## Modes
 
-fin123 presents the same workbook through three modes:
+fin123 presents the same workbook through four modes:
 
 | Mode | Purpose | Primary surface |
 |------|---------|----------------|
 | Spreadsheet | Author models | Grid, formula bar |
 | System | Inspect runtime state | Grid + side panel (scalars, builds, checks) |
 | Terminal | Operate models | Command shell with structured output |
+| Surface | Explore model space | 2D heatmap with live cursor and knobs |
 
 Same workbook. Same runtime. Same source of truth. Modes change presentation, not state.
+
+## What is Surface Mode?
+
+Surface Mode transforms a spreadsheet model into a 2D heatmap. Pick two input assumptions as axes, pick an output metric, and see the entire model landscape at once.
+
+- **Axes:** Revenue Growth x EBIT Margin (or any two parameters)
+- **Primary metric:** Price Target -- displayed large, updates continuously with cursor movement
+- **Secondary knobs:** WACC, Terminal Growth -- drag to deform the entire surface in real time
+- **Every point on the surface is a real model evaluation** -- not a chart, not an approximation
+
+Surface Mode is an ephemeral exploration layer. No commits, no builds, no runs created. Move the cursor, adjust knobs, see the model respond instantly. The spreadsheet and the surface show the same model -- just different representations.
 
 ## What is a Sweep?
 
@@ -134,6 +147,7 @@ See `demo/README.md` for full instructions and talking points.
 - **Local browser UI** -- FastAPI on localhost, canvas-based spreadsheet grid, keyboard-first.
 - **Deterministic lifecycle** -- Edit -> Commit -> Build -> Verify. Identical inputs always produce identical outputs.
 - **Terminal runner** -- `commit`, `scenario`, `sweep`, `grid`, `compare` in a structured terminal shell.
+- **Surface Mode** -- 2D heatmap exploration with live cursor, bilinear interpolation, and secondary knobs.
 - **AI Workbench** -- generate, revise, validate, and apply add-in code artifacts.
 - **Plugin system** -- applied add-ins loaded and validated during builds.
 - **Versioning** -- immutable snapshots, builds, and artifacts with SHA-256 integrity.
@@ -188,7 +202,7 @@ fin123 ui my_model
 Opens a local spreadsheet editor at `http://localhost:<port>` with:
 
 - Canvas grid with sparse rendering and keyboard-first navigation.
-- Mode switcher: Spreadsheet / System / Terminal.
+- Mode switcher: Spreadsheet / System / Terminal / Surface.
 - Terminal shell with deterministic runner commands.
 - Formula bar with live validation.
 - Multi-sheet tabs, copy/paste (TSV), font color formatting.

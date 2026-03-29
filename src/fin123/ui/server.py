@@ -192,6 +192,16 @@ class WorksheetCompileRequest(BaseModel):
     run_id: str | None = None
 
 
+class SurfaceEvalRequest(BaseModel):
+    x_param: str
+    x_range: tuple[float, float]
+    y_param: str
+    y_range: tuple[float, float]
+    steps: int = 25
+    fixed_params: dict[str, Any] = {}
+    output: str
+
+
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
@@ -886,6 +896,23 @@ def _api_router():
             media_type="text/csv",
             headers={"Content-Disposition": f"attachment; filename={grid_id}.csv"},
         )
+
+    # -- Surface Mode: ephemeral evaluation --
+
+    @router.post("/surface/evaluate")
+    async def surface_evaluate(req: SurfaceEvalRequest) -> dict[str, Any]:
+        try:
+            return _svc().evaluate_surface(
+                x_param=req.x_param,
+                x_range=req.x_range,
+                y_param=req.y_param,
+                y_range=req.y_range,
+                steps=req.steps,
+                fixed_params=req.fixed_params,
+                output=req.output,
+            )
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
 
     # -- AI Workbench: drafts --
 

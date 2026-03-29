@@ -2915,7 +2915,7 @@ document.getElementById("btn-ws-compile").addEventListener("click", async () => 
 // ═══════════════════════════════════════════════
 
 function setMode(mode) {
-  if (!["spreadsheet", "system", "terminal"].includes(mode)) return;
+  if (!["spreadsheet", "system", "terminal", "surface"].includes(mode)) return;
   S.uiMode = mode;
   localStorage.setItem("fin123_uiMode", mode);
   document.body.className = document.body.className.replace(/mode-\S+/g, "").trim();
@@ -2927,6 +2927,9 @@ function setMode(mode) {
   setTimeout(() => resizeCanvas(), 20);
   if (mode === "terminal") {
     setTimeout(() => document.getElementById("terminal-input").focus(), 50);
+  }
+  if (mode === "surface") {
+    setTimeout(initSurface, 30);
   }
 }
 
@@ -4785,8 +4788,548 @@ registerCmd("show full last", {
   }
 });
 
+// ═══════════════════════════════════════════════
+// Surface Mode
+// ═══════════════════════════════════════════════
+
+const SURFACE_V1_CONFIG = {
+  x: { param: "revenue_growth", label: "Revenue Growth", min: 0.02, max: 0.20, steps: 25 },
+  y: { param: "ebit_margin",    label: "EBIT Margin",    min: 0.10, max: 0.35, steps: 25 },
+  output: "value_per_share",
+  knobs: [
+    { param: "wacc",            label: "WACC",            min: 0.06, max: 0.15, step: 0.005, default: 0.10, inputId: "sf-knob-wacc", valId: "sf-knob-wacc-val" },
+    { param: "terminal_growth", label: "Terminal Growth",  min: 0.01, max: 0.04, step: 0.005, default: 0.025, inputId: "sf-knob-tg", valId: "sf-knob-tg-val" },
+  ],
+};
+
+// Surface state (ephemeral — never persisted)
+S.surfaceGrid     = null;  // 2D array of floats
+S.surfaceXVals    = null;  // x axis values
+S.surfaceYVals    = null;  // y axis values
+S.surfaceMin      = 0;
+S.surfaceMax      = 1;
+S.surfaceBaseX    = 0;
+S.surfaceBaseY    = 0;
+S.surfaceBaseVal  = 0;
+S.surfaceColorLUT = null;  // Uint8Array(256*3) RGB lookup
+// Plot geometry (set by renderSurface, read by overlay)
+S.sfPlot = { x: 0, y: 0, w: 0, h: 0, cw: 0, ch: 0 };
+// Session color domain — locked on initial load, stable across knob changes
+S.sfColorMin = null;
+S.sfColorMax = null;
+// Last known cursor position in CSS pixels (or -1 if not hovering)
+S.sfCursorX = -1;
+S.sfCursorY = -1;
+// Request management for knob-driven refreshes
+let _sfAbort = null;       // AbortController for in-flight request
+let _sfReqId = 0;          // monotonic request sequence counter
+let _sfDebounceTimer = null;
+
+// 6-stop color gradient: deep navy → teal → gold → hot red
+const SF_GRADIENT = [
+  { pos: 0.00, r: 27,  g: 42,  b: 74  },  // #1B2A4A
+  { pos: 0.20, r: 26,  g: 82,  b: 118 },  // #1A5276
+  { pos: 0.40, r: 26,  g: 188, b: 156 },  // #1ABC9C
+  { pos: 0.60, r: 244, g: 208, b: 63  },  // #F4D03F
+  { pos: 0.80, r: 230, g: 126, b: 34  },  // #E67E22
+  { pos: 1.00, r: 231, g: 76,  b: 60  },  // #E74C3C
+];
+
+function buildColorLUT() {
+  const lut = new Uint8Array(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    const t = i / 255;
+    // Find the two surrounding gradient stops
+    let s0 = SF_GRADIENT[0], s1 = SF_GRADIENT[SF_GRADIENT.length - 1];
+    for (let j = 0; j < SF_GRADIENT.length - 1; j++) {
+      if (t >= SF_GRADIENT[j].pos && t <= SF_GRADIENT[j + 1].pos) {
+        s0 = SF_GRADIENT[j];
+        s1 = SF_GRADIENT[j + 1];
+        break;
+      }
+    }
+    const f = s1.pos === s0.pos ? 0 : (t - s0.pos) / (s1.pos - s0.pos);
+    lut[i * 3]     = Math.round(s0.r + (s1.r - s0.r) * f);
+    lut[i * 3 + 1] = Math.round(s0.g + (s1.g - s0.g) * f);
+    lut[i * 3 + 2] = Math.round(s0.b + (s1.b - s0.b) * f);
+  }
+  return lut;
+}
+
+function fmtCurrency(v) {
+  if (v == null || isNaN(v)) return "—";
+  const neg = v < 0;
+  const abs = Math.abs(v);
+  const s = abs.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+  return (neg ? "-$" : "$") + s;
+}
+
+function sfBuildFixedParams() {
+  const fp = {};
+  for (const knob of SURFACE_V1_CONFIG.knobs) {
+    const el = document.getElementById(knob.inputId);
+    fp[knob.param] = el ? parseFloat(el.value) : knob.default;
+  }
+  return fp;
+}
+
+function sfApplyData(data) {
+  S.surfaceGrid    = data.grid;
+  S.surfaceXVals   = data.x_values;
+  S.surfaceYVals   = data.y_values;
+  S.surfaceMin     = data.min;
+  S.surfaceMax     = data.max;
+  S.surfaceBaseX   = data.base_x;
+  S.surfaceBaseY   = data.base_y;
+  S.surfaceBaseVal = data.base_value;
+
+  // Status line
+  const sfStatus = document.getElementById("sf-status");
+  if (sfStatus) sfStatus.textContent = data.grid.length + "\u00d7" + data.grid[0].length + " \u00b7 " + data.eval_ms + " ms";
+}
+
+function sfInitSliders() {
+  for (const knob of SURFACE_V1_CONFIG.knobs) {
+    const el = document.getElementById(knob.inputId);
+    const valEl = document.getElementById(knob.valId);
+    if (el) el.value = knob.default;
+    if (valEl) valEl.textContent = (knob.default * 100).toFixed(1) + "%";
+  }
+}
+
+async function initSurface() {
+  if (S.uiMode !== "surface") return;
+
+  // Clear stale state from previous mode session
+  S.sfCursorX = -1;
+  S.sfCursorY = -1;
+  S.sfColorMin = null;
+  S.sfColorMax = null;
+
+  // Show loading overlay (only on first load / mode entry)
+  const loadEl = document.getElementById("sf-loading");
+  if (loadEl) loadEl.classList.remove("hidden");
+
+  // Build color LUT once
+  if (!S.surfaceColorLUT) S.surfaceColorLUT = buildColorLUT();
+
+  // Initialize slider positions from defaults
+  sfInitSliders();
+
+  // Fetch surface data
+  const cfg = SURFACE_V1_CONFIG;
+  try {
+    const data = await api("POST", "/surface/evaluate", {
+      x_param: cfg.x.param,
+      x_range: [cfg.x.min, cfg.x.max],
+      y_param: cfg.y.param,
+      y_range: [cfg.y.min, cfg.y.max],
+      steps: cfg.x.steps,
+      fixed_params: sfBuildFixedParams(),
+      output: cfg.output,
+    });
+
+    sfApplyData(data);
+
+    // Lock session color domain from the initial surface
+    S.sfColorMin = data.min;
+    S.sfColorMax = data.max;
+
+    sfUpdatePanel(data.base_value, data.base_x, data.base_y);
+
+    // Hide loading, render
+    if (loadEl) loadEl.classList.add("hidden");
+    renderSurface();
+  } catch (e) {
+    if (loadEl) loadEl.textContent = "Error: " + e.message;
+    console.error("Surface evaluate failed:", e);
+  }
+}
+
+function sfRefreshSurface() {
+  // Debounced, cancellable fetch triggered by knob changes.
+  // Keeps existing surface visible. Shows subtle status indicator.
+  clearTimeout(_sfDebounceTimer);
+  _sfDebounceTimer = setTimeout(async function() {
+    // Cancel any in-flight request
+    if (_sfAbort) _sfAbort.abort();
+    _sfAbort = new AbortController();
+    const myReqId = ++_sfReqId;
+
+    // Subtle in-flight indicator
+    const sfStatus = document.getElementById("sf-status");
+    if (sfStatus) sfStatus.textContent = "updating\u2026";
+
+    const cfg = SURFACE_V1_CONFIG;
+    try {
+      const resp = await fetch("/api/surface/evaluate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          x_param: cfg.x.param,
+          x_range: [cfg.x.min, cfg.x.max],
+          y_param: cfg.y.param,
+          y_range: [cfg.y.min, cfg.y.max],
+          steps: cfg.x.steps,
+          fixed_params: sfBuildFixedParams(),
+          output: cfg.output,
+        }),
+        signal: _sfAbort.signal,
+      });
+      if (!resp.ok) return;
+      const data = await resp.json();
+
+      // Discard if a newer request was sent while this one was in-flight
+      if (myReqId < _sfReqId) return;
+
+      sfApplyData(data);
+      renderSurface();
+
+      // After redraw, restore panel from cursor if still hovering
+      if (S.sfCursorX >= 0) {
+        drawSurfaceOverlay(S.sfCursorX, S.sfCursorY);
+        const hit = sfGetValueAtPixel(S.sfCursorX, S.sfCursorY);
+        if (hit) { sfUpdatePanel(hit.value, hit.xParam, hit.yParam); }
+        else { sfResetPanel(); }
+      } else {
+        sfResetPanel();
+      }
+    } catch (e) {
+      if (e.name === "AbortError") return;  // expected on cancellation
+      console.error("Surface refresh failed:", e);
+    }
+  }, 120);
+}
+
+function renderSurface() {
+  const grid = S.surfaceGrid;
+  if (!grid || !grid.length) return;
+
+  const cvs = document.getElementById("surface-canvas");
+  if (!cvs) return;
+  const wrap = document.getElementById("sf-canvas-wrap");
+  // Size canvas to container (physical pixels for crisp rendering)
+  const dpr = window.devicePixelRatio || 1;
+  const cw = wrap.clientWidth;
+  const ch = wrap.clientHeight;
+  cvs.width = cw * dpr;
+  cvs.height = ch * dpr;
+  cvs.style.width = cw + "px";
+  cvs.style.height = ch + "px";
+  const ctx2 = cvs.getContext("2d");
+  ctx2.scale(dpr, dpr);
+
+  const lut = S.surfaceColorLUT;
+  const ny = grid.length;
+  const nx = grid[0].length;
+  // Use session color domain (locked on initial load) for stable visual mapping
+  const vMin = S.sfColorMin != null ? S.sfColorMin : S.surfaceMin;
+  const vMax = S.sfColorMax != null ? S.sfColorMax : S.surfaceMax;
+  const vRange = vMax - vMin || 1;
+
+  // Layout geometry — tight gutters to maximize field area
+  const gutterL = 38;   // y-axis labels
+  const gutterB = 28;   // x-axis labels
+  const gutterT = 4;    // top padding
+  const gutterR = 6;    // minimal right margin
+  const barW = 12;       // color bar width
+  const barGap = 4;      // gap between plot and bar
+  const plotX = gutterL;
+  const plotY = gutterT;
+  const plotW = cw - gutterL - gutterR - barW - barGap;
+  const plotH = ch - gutterT - gutterB;
+
+  if (plotW < 10 || plotH < 10) return;
+
+  // Store geometry for overlay use
+  S.sfPlot = { x: plotX, y: plotY, w: plotW, h: plotH, cw: cw, ch: ch };
+
+  // Clear
+  ctx2.fillStyle = "#0F1117";
+  ctx2.fillRect(0, 0, cw, ch);
+
+  // Draw heatmap — pixel-level bilinear interpolation
+  // putImageData ignores canvas transforms, so we must work in physical pixels
+  const phW = Math.round(plotW * dpr);
+  const phH = Math.round(plotH * dpr);
+  const img = ctx2.createImageData(phW, phH);
+  const d = img.data;
+  for (let py = 0; py < phH; py++) {
+    // Flip Y: py=0 (top) → highest y index, py=phH-1 (bottom) → y index 0
+    const fy = (1 - py / (phH - 1)) * (ny - 1);
+    const y0 = Math.floor(fy);
+    const y1 = Math.min(y0 + 1, ny - 1);
+    const dy = fy - y0;
+    for (let px = 0; px < phW; px++) {
+      const fx = px / (phW - 1) * (nx - 1);
+      const x0 = Math.floor(fx);
+      const x1 = Math.min(x0 + 1, nx - 1);
+      const dx = fx - x0;
+      // Bilinear interpolation of the raw value
+      const v = grid[y0][x0] * (1 - dx) * (1 - dy)
+              + grid[y0][x1] * dx * (1 - dy)
+              + grid[y1][x0] * (1 - dx) * dy
+              + grid[y1][x1] * dx * dy;
+      const t = Math.max(0, Math.min(255, Math.round((v - vMin) / vRange * 255)));
+      const off = (py * phW + px) * 4;
+      d[off]     = lut[t * 3];
+      d[off + 1] = lut[t * 3 + 1];
+      d[off + 2] = lut[t * 3 + 2];
+      d[off + 3] = 255;
+    }
+  }
+  ctx2.putImageData(img, Math.round(plotX * dpr), Math.round(plotY * dpr));
+
+  // Color bar
+  const barX = plotX + plotW + barGap;
+  for (let py = 0; py < plotH; py++) {
+    const t = Math.round((1 - py / (plotH - 1)) * 255);
+    const r = lut[t * 3], g = lut[t * 3 + 1], b = lut[t * 3 + 2];
+    ctx2.fillStyle = "rgb(" + r + "," + g + "," + b + ")";
+    ctx2.fillRect(barX, plotY + py, barW, 1);
+  }
+  // Color bar labels — positioned left of bar (inside plot edge)
+  ctx2.font = "9px 'JetBrains Mono','SF Mono',monospace";
+  ctx2.fillStyle = "#7C848D";
+  ctx2.textAlign = "right";
+  ctx2.fillText(fmtCurrency(vMax), barX - 4, plotY + 9);
+  ctx2.fillText(fmtCurrency(vMin), barX - 4, plotY + plotH);
+
+  // X-axis labels
+  const cfg = SURFACE_V1_CONFIG;
+  ctx2.font = "10px 'JetBrains Mono','SF Mono',monospace";
+  ctx2.fillStyle = "#7C848D";
+  ctx2.textAlign = "center";
+  const xTicks = 5;
+  for (let i = 0; i < xTicks; i++) {
+    const f = i / (xTicks - 1);
+    const xPx = plotX + f * plotW;
+    const val = cfg.x.min + f * (cfg.x.max - cfg.x.min);
+    ctx2.fillText((val * 100).toFixed(0) + "%", xPx, plotY + plotH + 12);
+  }
+  // X-axis title
+  ctx2.fillStyle = "#555B66";
+  ctx2.fillText(cfg.x.label, plotX + plotW / 2, plotY + plotH + 24);
+
+  // Y-axis labels
+  ctx2.textAlign = "right";
+  ctx2.fillStyle = "#7C848D";
+  const yTicks = 5;
+  for (let i = 0; i < yTicks; i++) {
+    const f = i / (yTicks - 1);
+    const yPx = plotY + f * plotH;
+    // Y axis: top = max, bottom = min (grid row 0 = min y)
+    const val = cfg.y.max - f * (cfg.y.max - cfg.y.min);
+    ctx2.fillText((val * 100).toFixed(0) + "%", plotX - 4, yPx + 3);
+  }
+  // Y-axis title (rotated)
+  ctx2.save();
+  ctx2.translate(10, plotY + plotH / 2);
+  ctx2.rotate(-Math.PI / 2);
+  ctx2.textAlign = "center";
+  ctx2.fillStyle = "#555B66";
+  ctx2.fillText(cfg.y.label, 0, 0);
+  ctx2.restore();
+
+  // Size overlay canvas to match, then draw base-case marker
+  sfSizeOverlay();
+  drawSurfaceOverlay(-1, -1);
+}
+
+// ── Surface overlay ──
+
+function sfSizeOverlay() {
+  const ovl = document.getElementById("surface-overlay");
+  if (!ovl) return;
+  const wrap = document.getElementById("sf-canvas-wrap");
+  const dpr = window.devicePixelRatio || 1;
+  const cw = wrap.clientWidth;
+  const ch = wrap.clientHeight;
+  ovl.width = cw * dpr;
+  ovl.height = ch * dpr;
+  ovl.style.width = cw + "px";
+  ovl.style.height = ch + "px";
+}
+
+function drawSurfaceOverlay(mx, my) {
+  // mx, my: mouse position in CSS pixels relative to the canvas wrap.
+  // Pass (-1, -1) for no-hover state (just draw base marker).
+  const ovl = document.getElementById("surface-overlay");
+  if (!ovl) return;
+  const dpr = window.devicePixelRatio || 1;
+  const oc = ovl.getContext("2d");
+  const p = S.sfPlot;
+  oc.setTransform(dpr, 0, 0, dpr, 0, 0);
+  oc.clearRect(0, 0, p.cw, p.ch);
+
+  const cfg = SURFACE_V1_CONFIG;
+  const hovering = mx >= p.x && mx <= p.x + p.w && my >= p.y && my <= p.y + p.h;
+
+  // Crosshair
+  if (hovering) {
+    oc.strokeStyle = "rgba(255, 255, 255, 0.55)";
+    oc.lineWidth = 1;
+    // Vertical line (full plot height)
+    oc.beginPath();
+    oc.moveTo(mx + 0.5, p.y);
+    oc.lineTo(mx + 0.5, p.y + p.h);
+    oc.stroke();
+    // Horizontal line (full plot width)
+    oc.beginPath();
+    oc.moveTo(p.x, my + 0.5);
+    oc.lineTo(p.x + p.w, my + 0.5);
+    oc.stroke();
+
+    // Intersection pill — dark background with coordinate text
+    const xFrac = (mx - p.x) / p.w;
+    const yFrac = 1 - (my - p.y) / p.h;  // flipped: top = max
+    const xVal = cfg.x.min + xFrac * (cfg.x.max - cfg.x.min);
+    const yVal = cfg.y.min + yFrac * (cfg.y.max - cfg.y.min);
+    const pillText = (xVal * 100).toFixed(1) + "% / " + (yVal * 100).toFixed(1) + "%";
+    oc.font = "10px 'JetBrains Mono','SF Mono',monospace";
+    const tw = oc.measureText(pillText).width;
+    const pillW = tw + 10;
+    const pillH = 18;
+    // Position: offset from cursor, keep inside plot
+    let pillX = mx + 12;
+    let pillY = my - 24;
+    if (pillX + pillW > p.x + p.w) pillX = mx - pillW - 8;
+    if (pillY < p.y) pillY = my + 12;
+    oc.fillStyle = "rgba(20, 23, 32, 0.88)";
+    oc.beginPath();
+    oc.roundRect(pillX, pillY, pillW, pillH, 3);
+    oc.fill();
+    oc.fillStyle = "#E8EAED";
+    oc.textAlign = "left";
+    oc.textBaseline = "middle";
+    oc.fillText(pillText, pillX + 5, pillY + pillH / 2);
+    oc.textBaseline = "alphabetic";  // reset
+  }
+
+  // Base-case marker (always visible)
+  const bxF = (S.surfaceBaseX - cfg.x.min) / (cfg.x.max - cfg.x.min);
+  const byF = (S.surfaceBaseY - cfg.y.min) / (cfg.y.max - cfg.y.min);
+  const markerX = p.x + bxF * p.w;
+  const markerY = p.y + (1 - byF) * p.h;
+  const ms = 5;
+  oc.beginPath();
+  oc.moveTo(markerX, markerY - ms);
+  oc.lineTo(markerX + ms, markerY);
+  oc.lineTo(markerX, markerY + ms);
+  oc.lineTo(markerX - ms, markerY);
+  oc.closePath();
+  oc.fillStyle = "rgba(255, 255, 255, 0.15)";
+  oc.fill();
+  oc.strokeStyle = "#FFFFFF";
+  oc.lineWidth = 1.5;
+  oc.stroke();
+}
+
+function sfGetValueAtPixel(mx, my) {
+  // Returns { value, xParam, yParam } or null if outside plot area.
+  const grid = S.surfaceGrid;
+  if (!grid) return null;
+  const p = S.sfPlot;
+  if (mx < p.x || mx > p.x + p.w || my < p.y || my > p.y + p.h) return null;
+
+  const cfg = SURFACE_V1_CONFIG;
+  const nx = grid[0].length;
+  const ny = grid.length;
+
+  const xFrac = (mx - p.x) / p.w;
+  const yFrac = 1 - (my - p.y) / p.h;  // flipped: top = max y
+
+  // Fractional grid indices
+  const fx = xFrac * (nx - 1);
+  const fy = yFrac * (ny - 1);
+  const x0 = Math.floor(fx), x1 = Math.min(x0 + 1, nx - 1);
+  const y0 = Math.floor(fy), y1 = Math.min(y0 + 1, ny - 1);
+  const dx = fx - x0, dy = fy - y0;
+
+  const value = grid[y0][x0] * (1 - dx) * (1 - dy)
+              + grid[y0][x1] * dx * (1 - dy)
+              + grid[y1][x0] * (1 - dx) * dy
+              + grid[y1][x1] * dx * dy;
+
+  const xParam = cfg.x.min + xFrac * (cfg.x.max - cfg.x.min);
+  const yParam = cfg.y.min + yFrac * (cfg.y.max - cfg.y.min);
+
+  return { value, xParam, yParam };
+}
+
+function sfUpdatePanel(value, xParam, yParam) {
+  const cfg = SURFACE_V1_CONFIG;
+  document.getElementById("sf-value").textContent = fmtCurrency(value);
+  document.getElementById("sf-coord-x").textContent = (xParam * 100).toFixed(1) + "%";
+  document.getElementById("sf-coord-y").textContent = (yParam * 100).toFixed(1) + "%";
+  // Passive axis fill bars
+  const xFill = document.getElementById("sf-axis-x-fill");
+  const yFill = document.getElementById("sf-axis-y-fill");
+  if (xFill) xFill.style.width = (Math.max(0, Math.min(1, (xParam - cfg.x.min) / (cfg.x.max - cfg.x.min))) * 100) + "%";
+  if (yFill) yFill.style.width = (Math.max(0, Math.min(1, (yParam - cfg.y.min) / (cfg.y.max - cfg.y.min))) * 100) + "%";
+}
+
+function sfResetPanel() {
+  sfUpdatePanel(S.surfaceBaseVal, S.surfaceBaseX, S.surfaceBaseY);
+}
+
+// Wire mouse events on overlay canvas + knob sliders
+(function sfInitEvents() {
+  const ovl = document.getElementById("surface-overlay");
+  if (!ovl) return;
+
+  ovl.addEventListener("mousemove", function(e) {
+    if (S.uiMode !== "surface" || !S.surfaceGrid) return;
+    const rect = ovl.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    S.sfCursorX = mx;
+    S.sfCursorY = my;
+
+    drawSurfaceOverlay(mx, my);
+
+    const hit = sfGetValueAtPixel(mx, my);
+    if (hit) {
+      sfUpdatePanel(hit.value, hit.xParam, hit.yParam);
+    }
+  });
+
+  ovl.addEventListener("mouseleave", function() {
+    if (S.uiMode !== "surface") return;
+    S.sfCursorX = -1;
+    S.sfCursorY = -1;
+    drawSurfaceOverlay(-1, -1);
+    sfResetPanel();
+  });
+
+  // Knob sliders — update label live, trigger debounced refresh
+  for (const knob of SURFACE_V1_CONFIG.knobs) {
+    const el = document.getElementById(knob.inputId);
+    const valEl = document.getElementById(knob.valId);
+    if (!el) continue;
+    el.addEventListener("input", function() {
+      // Update value label immediately during drag
+      if (valEl) valEl.textContent = (parseFloat(el.value) * 100).toFixed(1) + "%";
+      // Trigger debounced surface refresh
+      sfRefreshSurface();
+    });
+  }
+})();
+
+// Re-render surface on window resize
+function resizeSurface() {
+  if (S.uiMode !== "surface" || !S.surfaceGrid) return;
+  renderSurface();
+  // Restore hover state after resize — cursor pixel positions are invalid
+  // after geometry changes, so clear hover cleanly
+  S.sfCursorX = -1;
+  S.sfCursorY = -1;
+  sfResetPanel();
+}
+
 // ── Init ──
 window.addEventListener("resize", resizeCanvas);
+window.addEventListener("resize", resizeSurface);
 
 (async function init() {
   // Apply saved mode

@@ -1304,6 +1304,130 @@ class ProjectService:
             ])
         return buf.getvalue()
 
+    # ── Surface Mode: ephemeral evaluation ──
+
+    def evaluate_surface(
+        self,
+        x_param: str,
+        x_range: tuple[float, float],
+        y_param: str,
+        y_range: tuple[float, float],
+        steps: int,
+        fixed_params: dict[str, Any],
+        output: str,
+    ) -> dict[str, Any]:
+        """Evaluate scalar graph over a 2D parameter grid.
+
+        Read-only.  No runs, snapshots, or artifacts are created.
+        Tables are evaluated once and reused as a lookup cache for all
+        grid points.  Only the scalar DAG is re-evaluated per point.
+
+        Returns dict with grid values, axis arrays, min/max, base-case
+        anchor, and evaluation timing.
+        """
+        import math
+        import time as _time
+
+        from fin123.workbook import Workbook
+
+        t0 = _time.monotonic()
+
+        # Clamp steps
+        steps = max(5, min(50, steps))
+
+        # Validate params exist in spec
+        spec_params = self._spec.get("params", {})
+        for name in (x_param, y_param):
+            if name not in spec_params:
+                raise ValueError(f"Unknown parameter: {name!r}")
+        for name in fixed_params:
+            if name not in spec_params:
+                raise ValueError(f"Unknown parameter: {name!r}")
+
+        # Validate ranges
+        if x_range[0] >= x_range[1]:
+            raise ValueError(f"x_range must be ascending: {x_range}")
+        if y_range[0] >= y_range[1]:
+            raise ValueError(f"y_range must be ascending: {y_range}")
+
+        # Validate output exists as a scalar output
+        scalar_outputs = {
+            o["name"] for o in self._spec.get("outputs", [])
+            if o.get("type") == "scalar"
+        }
+        param_names = set(spec_params.keys())
+        # Output can be a declared scalar or a param name
+        if output not in scalar_outputs and output not in param_names:
+            raise ValueError(f"Unknown scalar output: {output!r}")
+
+        # Generate linspace arrays
+        xs = [x_range[0] + i * (x_range[1] - x_range[0]) / (steps - 1)
+              for i in range(steps)]
+        ys = [y_range[0] + i * (y_range[1] - y_range[0]) / (steps - 1)
+              for i in range(steps)]
+
+        # Build a Workbook instance for access to graph-building methods.
+        # This reads workbook.yaml but does NOT run/persist anything.
+        wb = Workbook(self.project_dir)
+
+        # Merge base params with fixed overrides
+        base_params = dict(spec_params)
+        base_params.update(fixed_params)
+
+        # Evaluate tables once — they don't depend on axis params in the
+        # demo model (benchmark_dcf).  Held in memory only; not exported.
+        tg = wb._build_table_graph(base_params)
+        tf = tg.evaluate()
+
+        # Evaluate base case (current workbook params, no axis override)
+        sg_base = wb._build_scalar_graph(dict(base_params), table_cache=tf)
+        base_scalars = sg_base.evaluate()
+        base_value = base_scalars.get(output, 0.0)
+        if not math.isfinite(base_value):
+            base_value = 0.0
+
+        # Evaluate the full grid
+        grid: list[list[float]] = []
+        for yv in ys:
+            row: list[float | None] = []
+            for xv in xs:
+                pp = dict(base_params)
+                pp[x_param] = xv
+                pp[y_param] = yv
+                sg = wb._build_scalar_graph(pp, table_cache=tf)
+                scalars = sg.evaluate()
+                v = scalars.get(output, 0.0)
+                row.append(v if math.isfinite(v) else None)
+            grid.append(row)  # type: ignore[arg-type]
+
+        # Compute min/max over finite values, then clamp non-finite
+        finite_vals = [v for row in grid for v in row if v is not None]
+        if finite_vals:
+            gmin = min(finite_vals)
+            gmax = max(finite_vals)
+        else:
+            gmin, gmax = 0.0, 1.0
+
+        clamp_hi = gmax * 1.1 if gmax > 0 else gmax + abs(gmin) * 0.1
+        for row in grid:
+            for i, v in enumerate(row):
+                if v is None:
+                    row[i] = clamp_hi
+
+        elapsed = round((_time.monotonic() - t0) * 1000, 1)
+
+        return {
+            "grid": grid,
+            "x_values": [round(v, 6) for v in xs],
+            "y_values": [round(v, 6) for v in ys],
+            "min": round(gmin, 2),
+            "max": round(gmax, 2),
+            "base_x": spec_params.get(x_param, xs[0]),
+            "base_y": spec_params.get(y_param, ys[0]),
+            "base_value": round(base_value, 2),
+            "eval_ms": elapsed,
+        }
+
     # ── AI Workbench: draft artifact persistence ──
 
     def _drafts_dir(self) -> Path:
