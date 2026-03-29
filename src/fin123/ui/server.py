@@ -914,6 +914,15 @@ def _api_router():
         except ValueError as exc:
             raise HTTPException(400, str(exc))
 
+    # -- Result inspection --
+
+    @router.get("/inspect/{result_id}")
+    async def inspect_result(result_id: str) -> dict[str, Any]:
+        try:
+            return _svc().inspect_result(result_id)
+        except FileNotFoundError as exc:
+            raise HTTPException(404, str(exc))
+
     # -- AI Workbench: drafts --
 
     class DraftSaveRequest(BaseModel):
@@ -962,8 +971,16 @@ def _api_router():
         except ValueError as exc:
             raise HTTPException(400, str(exc))
 
+    @router.post("/drafts/{draft_id}/promote")
+    async def promote_draft(draft_id: str) -> dict[str, Any]:
+        try:
+            return _svc().draft_apply(draft_id)
+        except ValueError as exc:
+            raise HTTPException(400, str(exc))
+
     @router.post("/drafts/{draft_id}/apply")
     async def apply_draft(draft_id: str) -> dict[str, Any]:
+        """Backward-compatible alias for promote."""
         try:
             return _svc().draft_apply(draft_id)
         except ValueError as exc:

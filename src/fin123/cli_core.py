@@ -994,6 +994,123 @@ def run_log_cmd(ctx: click.Context, directory: str, run_id: str) -> None:
 
 
 # ---------------------------------------------------------------------------
+# Inspect
+# ---------------------------------------------------------------------------
+
+
+@main.command()
+@click.argument("result_id")
+@click.option("--project", "directory", type=click.Path(exists=True), default=".", help="Project directory.")
+@click.pass_context
+def inspect(ctx: click.Context, result_id: str, directory: str) -> None:
+    """Inspect a committed result.
+
+    Shows the full state-at-decision: parameters, outputs, hashes,
+    and model version used to produce the result.
+
+    RESULT_ID is the identifier of a committed result (e.g. 20260329_003933_run_6).
+
+    Read-only. No mutation. No replay.
+
+    Examples:
+
+      fin123 inspect 20260329_003933_run_6 --project my_model
+      fin123 inspect 20260329_003933_run_6 --project my_model --json
+    """
+    project_dir = Path(directory)
+    run_dir = project_dir / "runs" / result_id
+
+    if not run_dir.exists():
+        # Try partial match
+        runs_dir = project_dir / "runs"
+        if runs_dir.exists():
+            matches = [d.name for d in runs_dir.iterdir() if d.is_dir() and result_id in d.name]
+            if len(matches) == 1:
+                result_id = matches[0]
+                run_dir = runs_dir / result_id
+            elif len(matches) > 1:
+                _emit_err(ctx, f"Ambiguous result ID '{result_id}'. Matches: {', '.join(sorted(matches))}")
+                raise SystemExit(1)
+
+    meta_path = run_dir / "run_meta.json"
+    scalars_path = run_dir / "outputs" / "scalars.json"
+
+    if not meta_path.exists():
+        _emit_err(ctx, f"Result '{result_id}' not found in {project_dir / 'runs'}")
+        raise SystemExit(1)
+
+    meta = json.loads(meta_path.read_text())
+    scalars = json.loads(scalars_path.read_text()) if scalars_path.exists() else {}
+
+    # Build the inspection record
+    effective_params = meta.get("effective_params", {})
+    timings = meta.get("timings_ms", {})
+    plugins = meta.get("plugins", {})
+    export_rows = meta.get("export_row_counts", {})
+
+    data = {
+        "result_id": meta.get("run_id", result_id),
+        "created_at": meta.get("timestamp", "unavailable"),
+        "model_version": meta.get("model_version_id", "unavailable"),
+        "model_id": meta.get("model_id", "unavailable"),
+        "engine_version": meta.get("engine_version", "unavailable"),
+        "workbook_spec_hash": meta.get("workbook_spec_hash", "unavailable"),
+        "params_hash": meta.get("params_hash", "unavailable"),
+        "export_hash": meta.get("export_hash", "unavailable"),
+        "plugin_hash": meta.get("plugin_hash", "unavailable"),
+        "plugins": plugins if plugins else "none",
+        "scenario_name": meta.get("scenario_name") or "none",
+        "assertions_status": meta.get("assertions_status", "unavailable"),
+        "effective_params": effective_params,
+        "scalar_outputs": scalars,
+        "table_outputs": {k: f"{v:,} rows" for k, v in export_rows.items()},
+        "timings_ms": timings,
+        "artifact_path": str(run_dir),
+    }
+
+    if ctx.obj.get("json"):
+        click.echo(_json_out(True, "inspect", data))
+        return
+
+    _emit(ctx, f"Result: {data['result_id']}")
+    _emit(ctx, f"  Created:          {data['created_at']}")
+    _emit(ctx, f"  Model version:    {data['model_version']}")
+    _emit(ctx, f"  Engine:           {data['engine_version']}")
+    _emit(ctx, f"  Scenario:         {data['scenario_name']}")
+    _emit(ctx, f"  Assertions:       {data['assertions_status']}")
+    _emit(ctx, "")
+    _emit(ctx, "Hashes:")
+    _emit(ctx, f"  workbook_spec:    {data['workbook_spec_hash'][:16]}...")
+    _emit(ctx, f"  params:           {data['params_hash'][:16]}...")
+    _emit(ctx, f"  export:           {data['export_hash'][:16]}...")
+    _emit(ctx, f"  plugin:           {str(data['plugin_hash'])[:16]}...")
+    _emit(ctx, "")
+    _emit(ctx, "Parameters:")
+    for k, v in sorted(effective_params.items()):
+        _emit(ctx, f"  {k}: {v}")
+    _emit(ctx, "")
+    _emit(ctx, "Scalar Outputs:")
+    for k, v in sorted(scalars.items()):
+        if isinstance(v, float):
+            _emit(ctx, f"  {k}: {v:,.2f}")
+        else:
+            _emit(ctx, f"  {k}: {v}")
+    if export_rows:
+        _emit(ctx, "")
+        _emit(ctx, "Table Outputs:")
+        for k, v in sorted(export_rows.items()):
+            _emit(ctx, f"  {k}: {v:,} rows")
+    if timings:
+        total = sum(timings.values())
+        _emit(ctx, "")
+        _emit(ctx, f"Timing: {total:.0f} ms total")
+        for k, v in timings.items():
+            _emit(ctx, f"  {k}: {v:.1f} ms")
+    _emit(ctx, "")
+    _emit(ctx, f"Artifact: {data['artifact_path']}")
+
+
+# ---------------------------------------------------------------------------
 # Demo
 # ---------------------------------------------------------------------------
 

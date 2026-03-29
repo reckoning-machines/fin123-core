@@ -1304,6 +1304,41 @@ class ProjectService:
             ])
         return buf.getvalue()
 
+    # ── Result inspection ──
+
+    def inspect_result(self, result_id: str) -> dict[str, Any]:
+        """Inspect a committed result.  Read-only, no mutation."""
+        import json as _json
+
+        run_dir = self.project_dir / "runs" / result_id
+        meta_path = run_dir / "run_meta.json"
+        scalars_path = run_dir / "outputs" / "scalars.json"
+
+        if not meta_path.exists():
+            raise FileNotFoundError(f"Result '{result_id}' not found")
+
+        meta = _json.loads(meta_path.read_text())
+        scalars = _json.loads(scalars_path.read_text()) if scalars_path.exists() else {}
+
+        return {
+            "result_id": meta.get("run_id", result_id),
+            "created_at": meta.get("timestamp", "unavailable"),
+            "model_version": meta.get("model_version_id", "unavailable"),
+            "model_id": meta.get("model_id", "unavailable"),
+            "engine_version": meta.get("engine_version", "unavailable"),
+            "workbook_spec_hash": meta.get("workbook_spec_hash", "unavailable"),
+            "params_hash": meta.get("params_hash", "unavailable"),
+            "export_hash": meta.get("export_hash", "unavailable"),
+            "plugin_hash": meta.get("plugin_hash", "unavailable"),
+            "plugins": meta.get("plugins", {}),
+            "scenario_name": meta.get("scenario_name") or "none",
+            "assertions_status": meta.get("assertions_status", "unavailable"),
+            "effective_params": meta.get("effective_params", {}),
+            "scalar_outputs": scalars,
+            "table_outputs": {k: f"{v:,} rows" for k, v in meta.get("export_row_counts", {}).items()},
+            "timings_ms": meta.get("timings_ms", {}),
+        }
+
     # ── Surface Mode: ephemeral evaluation ──
 
     def evaluate_surface(

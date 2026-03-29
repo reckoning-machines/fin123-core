@@ -8,12 +8,10 @@ build/
 .pytest_cache/
 .mypy_cache/
 *.spec.bak
-unified_diffs.md
-uniform_diff.md
-DOCS/excel_import_export.md
-fin123_audit.md
-benchmark_audit.md
-benchmark_build_plan.md
 dcf_demo/
-modes_terminal_runner.md
-llm_workbench.md
+
+# Ignore all root .md files except README, CHANGELOG, ARCHITECTURE
+/*.md
+!README.md
+!CHANGELOG.md
+!ARCHITECTURE.md

@@ -3320,6 +3320,100 @@ registerCmd("outputs", {
   }
 });
 
+registerCmd("inspect", {
+  description: "Inspect a committed result — parameters, outputs, hashes, timing",
+  usage: "inspect <result_id>",
+  group: "inspect",
+  async handler(args) {
+    if (args.length === 0) {
+      // Default: inspect latest result
+      const proj = await api("GET", "/project");
+      if (!proj.last_run_id) { termError("No results available. Use 'commit' first."); return; }
+      args = [proj.last_run_id];
+    }
+    const resultId = args[0];
+    try {
+      const d = await api("GET", "/inspect/" + encodeURIComponent(resultId));
+
+      let html = '<div class="term-compare">';
+      html += '<div class="term-compare-header">';
+      html += '<span class="term-compare-title">RESULT</span>';
+      html += '<span class="term-scenario-badge">' + termEsc(d.result_id) + '</span>';
+      if (d.scenario_name && d.scenario_name !== "none") {
+        html += '<span class="term-compare-meta">scenario: ' + termEsc(d.scenario_name) + '</span>';
+      }
+      html += '</div>';
+
+      // Metadata
+      html += '<div class="term-compare-section">';
+      html += '<div class="term-compare-section-title">Metadata</div>';
+      html += '<table class="term-diff-table"><tbody>';
+      html += '<tr><td>created</td><td>' + termEsc(d.created_at) + '</td></tr>';
+      html += '<tr><td>model version</td><td>' + termEsc(d.model_version) + '</td></tr>';
+      html += '<tr><td>engine</td><td>' + termEsc(d.engine_version) + '</td></tr>';
+      html += '<tr><td>assertions</td><td>' + termEsc(d.assertions_status) + '</td></tr>';
+      html += '</tbody></table></div>';
+
+      // Hashes
+      html += '<div class="term-compare-section">';
+      html += '<div class="term-compare-section-title">Hashes</div>';
+      html += '<table class="term-diff-table"><tbody>';
+      const hashFields = [
+        ["workbook_spec", d.workbook_spec_hash],
+        ["params", d.params_hash],
+        ["export", d.export_hash],
+        ["plugin", d.plugin_hash],
+      ];
+      for (const [label, hash] of hashFields) {
+        const display = (hash && hash !== "unavailable") ? hash.substring(0, 16) + "\u2026" : "—";
+        html += '<tr><td>' + termEsc(label) + '</td><td style="font-family:var(--font-mono,monospace);font-size:10px;">' + termEsc(display) + '</td></tr>';
+      }
+      html += '</tbody></table></div>';
+
+      // Parameters
+      html += '<div class="term-compare-section">';
+      html += '<div class="term-compare-section-title">Parameters (' + Object.keys(d.effective_params).length + ')</div>';
+      html += '<table class="term-diff-table"><tbody>';
+      for (const [k, v] of Object.entries(d.effective_params).sort()) {
+        html += '<tr><td>' + termEsc(k) + '</td><td>' + termEsc(String(v)) + '</td></tr>';
+      }
+      html += '</tbody></table></div>';
+
+      // Scalar outputs
+      const scalarKeys = Object.keys(d.scalar_outputs).sort();
+      html += '<div class="term-compare-section">';
+      html += '<div class="term-compare-section-title">Scalar Outputs (' + scalarKeys.length + ')</div>';
+      html += '<table class="term-diff-table"><tbody>';
+      for (const k of scalarKeys) {
+        const v = d.scalar_outputs[k];
+        const display = (typeof v === "number") ? v.toLocaleString("en-US", {minimumFractionDigits: 2, maximumFractionDigits: 2}) : String(v);
+        html += '<tr><td>' + termEsc(k) + '</td><td>' + termEsc(display) + '</td></tr>';
+      }
+      html += '</tbody></table></div>';
+
+      // Table outputs
+      if (d.table_outputs && Object.keys(d.table_outputs).length > 0) {
+        html += '<div class="term-compare-section">';
+        html += '<div class="term-compare-section-title">Table Outputs</div>';
+        html += '<table class="term-diff-table"><tbody>';
+        for (const [k, v] of Object.entries(d.table_outputs).sort()) {
+          html += '<tr><td>' + termEsc(k) + '</td><td>' + termEsc(v) + '</td></tr>';
+        }
+        html += '</tbody></table></div>';
+      }
+
+      // Timing
+      if (d.timings_ms && Object.keys(d.timings_ms).length > 0) {
+        const total = Object.values(d.timings_ms).reduce((a, b) => a + b, 0);
+        html += '<div class="term-compare-meta" style="padding-top:6px;">' + total.toFixed(0) + ' ms total</div>';
+      }
+
+      html += '</div>';
+      termAppend(html);
+    } catch (err) { termError("Result not found: " + err.message); }
+  }
+});
+
 registerCmd("show input", {
   description: "Show value and metadata for a named input parameter",
   usage: "show input <name>",
@@ -4395,7 +4489,7 @@ registerCmd("ai draft addin", {
       let ns = '<div class="term-next-steps">';
       ns += '<div class="term-step"><span class="term-step-cmd">draft show ' + termEsc(did) + '</span> <span class="term-step-desc">— review generated code</span></div>';
       ns += '<div class="term-step"><span class="term-step-cmd">validate draft ' + termEsc(did) + '</span> <span class="term-step-desc">— run policy validation</span></div>';
-      ns += '<div class="term-step"><span class="term-step-cmd">apply draft ' + termEsc(did) + '</span> <span class="term-step-desc">— apply to plugins/ (after validation)</span></div>';
+      ns += '<div class="term-step"><span class="term-step-cmd">promote draft ' + termEsc(did) + '</span> <span class="term-step-desc">— promote into model (after validation)</span></div>';
       ns += '</div>';
       termAppend(ns);
       termAppend('<div class="term-ai-footer" style="margin-top:2px;">AI-generated code — review and validate before applying</div>');
@@ -4585,27 +4679,42 @@ registerCmd("validate draft", {
   }
 });
 
-registerCmd("apply draft", {
-  description: "Apply a validated draft to the plugins/ directory",
-  usage: "apply draft <id>",
+async function _promoteDraft(id) {
+  const result = await api("POST", "/drafts/" + encodeURIComponent(id) + "/promote");
+  S.dirty = true;
+  updateStatus();
+  termStatus("Draft Promoted", [
+    ["draft", id],
+    ["promoted to", result.applied_path || "—"],
+    ["status", "promoted — available for next commit"],
+  ]);
+  let ns = '<div class="term-next-steps">';
+  ns += '<div class="term-step"><span class="term-step-cmd">commit</span> <span class="term-step-desc">— commit produces a result with the promoted add-in</span></div>';
+  ns += '</div>';
+  termAppend(ns);
+  termAppend('<div class="term-ai-footer" style="margin-top:2px;">Once promoted, the add-in behaves like any other function in the model.</div>');
+}
+
+registerCmd("promote draft", {
+  description: "Promote a validated draft into the model (installs to plugins/)",
+  usage: "promote draft <id>",
   group: "draft",
   async handler(args) {
-    if (args.length === 0) { termError("Usage: apply draft <id>"); return; }
-    const id = args[0];
-    try {
-      const result = await api("POST", "/drafts/" + encodeURIComponent(id) + "/apply");
-      S.dirty = true;
-      updateStatus();
-      termStatus("Draft Applied", [
-        ["draft", id],
-        ["applied to", result.applied_path || "—"],
-        ["status", "applied — workbook marked dirty"],
-      ]);
-      let ns = '<div class="term-next-steps">';
-      ns += '<div class="term-step"><span class="term-step-cmd">commit</span> <span class="term-step-desc">— build workbook with new plugin</span></div>';
-      ns += '</div>';
-      termAppend(ns);
-    } catch (err) { termError("Failed: " + err.message); }
+    if (args.length === 0) { termError("Usage: promote draft <id>"); return; }
+    try { await _promoteDraft(args[0]); }
+    catch (err) { termError("Failed: " + err.message); }
+  }
+});
+
+registerCmd("apply draft", {
+  description: "Promote a validated draft (alias for 'promote draft')",
+  usage: "apply draft <id>",
+  group: "draft",
+  hidden: true,
+  async handler(args) {
+    if (args.length === 0) { termError("Usage: promote draft <id>"); return; }
+    try { await _promoteDraft(args[0]); }
+    catch (err) { termError("Failed: " + err.message); }
   }
 });
 
@@ -4820,6 +4929,8 @@ S.sfColorMax = null;
 // Last known cursor position in CSS pixels (or -1 if not hovering)
 S.sfCursorX = -1;
 S.sfCursorY = -1;
+// Last hover value (persists after mouseleave for "Set to cursor" button)
+S.sfLastHoverValue = null;  // { value, xParam, yParam } or null
 // Request management for knob-driven refreshes
 let _sfAbort = null;       // AbortController for in-flight request
 let _sfReqId = 0;          // monotonic request sequence counter
@@ -4864,6 +4975,262 @@ function fmtCurrency(v) {
   return (neg ? "-$" : "$") + s;
 }
 
+// ── Contour computation ──
+
+// Target state
+S.sfTarget = null;           // null = no target, else float
+S.sfContours = [];           // [{level, segments: [[x1,y1,x2,y2], ...]}, ...]
+S.sfTargetContour = null;    // segments for target level
+S.sfContourLevels = [];      // float[] of computed nice levels
+S.sfNiceStep = 0;            // step size used for levels
+
+function sfComputeNiceStep(range, targetCount) {
+  /** Compute a "nice" step size for contour levels.
+   *  Returns a value from {1, 2, 2.5, 5} × 10^n that yields ~targetCount steps. */
+  if (range <= 0 || !isFinite(range)) return 0;
+  const rawStep = range / targetCount;
+  const mag = Math.pow(10, Math.floor(Math.log10(rawStep)));
+  const norm = rawStep / mag; // 1 ≤ norm < 10
+  let nice;
+  if (norm <= 1)        nice = 1;
+  else if (norm <= 2)   nice = 2;
+  else if (norm <= 2.5) nice = 2.5;
+  else if (norm <= 5)   nice = 5;
+  else                  nice = 10;
+  return nice * mag;
+}
+
+function sfComputeContourLevels() {
+  /** Derive contour levels from the session color domain using nice-number spacing. */
+  const lo = S.sfColorMin, hi = S.sfColorMax;
+  if (lo == null || hi == null || hi - lo <= 0) { S.sfContourLevels = []; S.sfNiceStep = 0; return; }
+  const step = sfComputeNiceStep(hi - lo, 5);
+  if (step <= 0) { S.sfContourLevels = []; S.sfNiceStep = 0; return; }
+  S.sfNiceStep = step;
+  const levels = [];
+  const first = Math.ceil(lo / step) * step;
+  const eps = step * 0.01;
+  for (let v = first; v <= hi - eps; v += step) {
+    if (v > lo + eps) levels.push(Math.round(v / eps) * eps); // snap to avoid float drift
+  }
+  if (levels.length > 8) levels.length = 8;
+  S.sfContourLevels = levels;
+}
+
+// Marching squares lookup: 16 cases → edge pairs
+// Edges: 0=bottom, 1=right, 2=top, 3=left
+// Each case maps to 0, 1, or 2 line segments (as edge index pairs)
+const _MS_TABLE = [
+  [],           // 0: no edges
+  [[3, 0]],    // 1: BL
+  [[0, 1]],    // 2: BR
+  [[3, 1]],    // 3: BL+BR
+  [[1, 2]],    // 4: TR
+  [[3, 2], [0, 1]],  // 5: BL+TR (saddle — ambiguous, use this convention)
+  [[0, 2]],    // 6: BR+TR
+  [[3, 2]],    // 7: BL+BR+TR
+  [[2, 3]],    // 8: TL
+  [[2, 0]],    // 9: BL+TL
+  [[2, 3], [0, 1]],  // 10: BR+TL (saddle)
+  [[2, 1]],    // 11: BL+BR+TL
+  [[1, 3]],    // 12: TR+TL
+  [[1, 0]],    // 13: BL+TR+TL
+  [[0, 3]],    // 14: BR+TR+TL
+  [],           // 15: all above
+];
+
+function sfMarchingSquares(grid, level, plotX, plotY, plotW, plotH) {
+  /** Extract contour line segments for a single level from the grid.
+   *  Returns array of [x1, y1, x2, y2] in CSS pixel coordinates. */
+  const ny = grid.length, nx = grid[0].length;
+  const segments = [];
+
+  for (let yi = 0; yi < ny - 1; yi++) {
+    for (let xi = 0; xi < nx - 1; xi++) {
+      // Cell corners: BL, BR, TR, TL (matching marching squares convention)
+      const bl = grid[yi][xi];
+      const br = grid[yi][xi + 1];
+      const tr = grid[yi + 1][xi + 1];
+      const tl = grid[yi + 1][xi];
+
+      let caseIdx = 0;
+      if (bl >= level) caseIdx |= 1;
+      if (br >= level) caseIdx |= 2;
+      if (tr >= level) caseIdx |= 4;
+      if (tl >= level) caseIdx |= 8;
+
+      const edges = _MS_TABLE[caseIdx];
+      if (edges.length === 0) continue;
+
+      for (const [e0, e1] of edges) {
+        const p0 = _msEdgeInterp(xi, yi, e0, bl, br, tr, tl, level, nx, ny, plotX, plotY, plotW, plotH);
+        const p1 = _msEdgeInterp(xi, yi, e1, bl, br, tr, tl, level, nx, ny, plotX, plotY, plotW, plotH);
+        segments.push([p0[0], p0[1], p1[0], p1[1]]);
+      }
+    }
+  }
+  return segments;
+}
+
+function _msEdgeInterp(xi, yi, edge, bl, br, tr, tl, level, nx, ny, plotX, plotY, plotW, plotH) {
+  /** Interpolate a point on a cell edge for a contour level.
+   *  Returns [cssX, cssY]. */
+  let fx, fy;
+  switch (edge) {
+    case 0: { // bottom edge: between BL and BR
+      const t = (bl === br) ? 0.5 : (level - bl) / (br - bl);
+      fx = xi + t; fy = yi;
+      break;
+    }
+    case 1: { // right edge: between BR and TR
+      const t = (br === tr) ? 0.5 : (level - br) / (tr - br);
+      fx = xi + 1; fy = yi + t;
+      break;
+    }
+    case 2: { // top edge: between TL and TR
+      const t = (tl === tr) ? 0.5 : (level - tl) / (tr - tl);
+      fx = xi + t; fy = yi + 1;
+      break;
+    }
+    case 3: { // left edge: between BL and TL
+      const t = (bl === tl) ? 0.5 : (level - bl) / (tl - bl);
+      fx = xi; fy = yi + t;
+      break;
+    }
+  }
+  // Grid coords → CSS pixels (Y flipped)
+  const px = plotX + fx / (nx - 1) * plotW;
+  const py = plotY + (1 - fy / (ny - 1)) * plotH;
+  return [px, py];
+}
+
+function sfComputeAllContours() {
+  /** Compute contour segments for all nice levels from the current grid. */
+  const grid = S.surfaceGrid;
+  const p = S.sfPlot;
+  if (!grid || !grid.length || !S.sfContourLevels.length) { S.sfContours = []; return; }
+
+  S.sfContours = S.sfContourLevels.map(level => ({
+    level,
+    segments: sfMarchingSquares(grid, level, p.x, p.y, p.w, p.h),
+  }));
+}
+
+function sfDrawContours(ctx2) {
+  /** Draw cached contour lines on the base surface canvas. */
+  if (!S.sfContours.length) return;
+  const p = S.sfPlot;
+
+  ctx2.save();
+  ctx2.beginPath();
+  ctx2.rect(p.x, p.y, p.w, p.h);
+  ctx2.clip();
+
+  for (const c of S.sfContours) {
+    // Draw line segments
+    ctx2.strokeStyle = "rgba(255, 255, 255, 0.22)";
+    ctx2.lineWidth = 0.75;
+    ctx2.beginPath();
+    for (const [x1, y1, x2, y2] of c.segments) {
+      ctx2.moveTo(x1, y1);
+      ctx2.lineTo(x2, y2);
+    }
+    ctx2.stroke();
+
+    // Label: find the longest segment
+    sfDrawContourLabel(ctx2, c);
+  }
+
+  ctx2.restore();
+}
+
+function sfDrawContourLabel(ctx2, contour) {
+  /** Place a label on the longest segment of a contour if it's long enough. */
+  if (contour.segments.length === 0) return;
+  let best = null, bestLen = 0;
+  for (const seg of contour.segments) {
+    const len = Math.hypot(seg[2] - seg[0], seg[3] - seg[1]);
+    if (len > bestLen) { bestLen = len; best = seg; }
+  }
+  if (bestLen < 40 || !best) return;
+
+  const mx = (best[0] + best[2]) / 2;
+  const my = (best[1] + best[3]) / 2;
+  const label = fmtCurrency(contour.level);
+
+  ctx2.font = "11px 'JetBrains Mono','SF Mono',monospace";
+  const tw = ctx2.measureText(label).width;
+  const pw = tw + 8, ph = 16;
+  ctx2.fillStyle = "rgba(15, 17, 23, 0.85)";
+  ctx2.fillRect(mx - pw / 2, my - ph / 2, pw, ph);
+  ctx2.fillStyle = "rgba(255, 255, 255, 0.75)";
+  ctx2.textAlign = "center";
+  ctx2.textBaseline = "middle";
+  ctx2.fillText(label, mx, my);
+  ctx2.textBaseline = "alphabetic";
+}
+
+function sfDrawTargetContour(oc) {
+  /** Draw the target highlight contour on the overlay canvas. */
+  if (S.sfTarget == null || !S.sfTargetContour || !S.sfTargetContour.length) return;
+  const p = S.sfPlot;
+
+  oc.save();
+  oc.beginPath();
+  oc.rect(p.x, p.y, p.w, p.h);
+  oc.clip();
+
+  oc.strokeStyle = "rgba(255, 255, 255, 0.85)";
+  oc.lineWidth = 1.5;
+  oc.beginPath();
+  for (const [x1, y1, x2, y2] of S.sfTargetContour) {
+    oc.moveTo(x1, y1);
+    oc.lineTo(x2, y2);
+  }
+  oc.stroke();
+  oc.restore();
+}
+
+function sfSetTarget(value) {
+  /** Set the target value and recompute its contour. */
+  if (value == null) {
+    S.sfTarget = null;
+    S.sfTargetContour = null;
+    const el = document.getElementById("sf-target-val");
+    if (el) el.textContent = "—";
+    const delta = document.getElementById("sf-target-delta");
+    if (delta) delta.innerHTML = "";
+    return;
+  }
+  S.sfTarget = value;
+  // Extract contour at this exact level
+  const grid = S.surfaceGrid;
+  const p = S.sfPlot;
+  if (grid && grid.length && p.w > 0) {
+    S.sfTargetContour = sfMarchingSquares(grid, value, p.x, p.y, p.w, p.h);
+  }
+  const el = document.getElementById("sf-target-val");
+  if (el) el.textContent = fmtCurrency(value);
+}
+
+function sfInitTargetControl() {
+  /** Configure the target slider range from the session color domain. */
+  const slider = document.getElementById("sf-target-slider");
+  if (!slider) return;
+  const lo = S.sfColorMin, hi = S.sfColorMax;
+  if (lo == null || hi == null || hi <= lo) {
+    slider.disabled = true;
+    return;
+  }
+  const step = S.sfNiceStep > 0 ? S.sfNiceStep : (hi - lo) / 20;
+  slider.min = lo;
+  slider.max = hi;
+  slider.step = step;
+  slider.value = (lo + hi) / 2;
+  slider.disabled = false;
+  sfSetTarget(null); // start with no target
+}
+
 function sfBuildFixedParams() {
   const fp = {};
   for (const knob of SURFACE_V1_CONFIG.knobs) {
@@ -4903,6 +5270,7 @@ async function initSurface() {
   // Clear stale state from previous mode session
   S.sfCursorX = -1;
   S.sfCursorY = -1;
+  S.sfLastHoverValue = null;
   S.sfColorMin = null;
   S.sfColorMax = null;
 
@@ -4936,6 +5304,9 @@ async function initSurface() {
     S.sfColorMax = data.max;
 
     sfUpdatePanel(data.base_value, data.base_x, data.base_y);
+
+    // Initialize target control from session domain
+    sfInitTargetControl();
 
     // Hide loading, render
     if (loadEl) loadEl.classList.add("hidden");
@@ -4983,6 +5354,8 @@ function sfRefreshSurface() {
       if (myReqId < _sfReqId) return;
 
       sfApplyData(data);
+      // Recompute target contour against new grid if target is active
+      if (S.sfTarget != null) sfSetTarget(S.sfTarget);
       renderSurface();
 
       // After redraw, restore panel from cursor if still hovering
@@ -5027,10 +5400,10 @@ function renderSurface() {
   const vMax = S.sfColorMax != null ? S.sfColorMax : S.surfaceMax;
   const vRange = vMax - vMin || 1;
 
-  // Layout geometry — tight gutters to maximize field area
-  const gutterL = 38;   // y-axis labels
-  const gutterB = 28;   // x-axis labels
-  const gutterT = 4;    // top padding
+  // Layout geometry
+  const gutterL = 52;   // y-axis labels + title
+  const gutterB = 38;   // x-axis labels + title
+  const gutterT = 6;    // top padding
   const gutterR = 6;    // minimal right margin
   const barW = 12;       // color bar width
   const barGap = 4;      // gap between plot and bar
@@ -5080,6 +5453,11 @@ function renderSurface() {
   }
   ctx2.putImageData(img, Math.round(plotX * dpr), Math.round(plotY * dpr));
 
+  // Contour lines (computed once per grid change, drawn on base canvas)
+  sfComputeContourLevels();
+  sfComputeAllContours();
+  sfDrawContours(ctx2);
+
   // Color bar
   const barX = plotX + plotW + barGap;
   for (let py = 0; py < plotH; py++) {
@@ -5089,45 +5467,48 @@ function renderSurface() {
     ctx2.fillRect(barX, plotY + py, barW, 1);
   }
   // Color bar labels — positioned left of bar (inside plot edge)
-  ctx2.font = "9px 'JetBrains Mono','SF Mono',monospace";
-  ctx2.fillStyle = "#7C848D";
+  ctx2.font = "11px 'JetBrains Mono','SF Mono',monospace";
+  ctx2.fillStyle = "#A0A8B4";
   ctx2.textAlign = "right";
-  ctx2.fillText(fmtCurrency(vMax), barX - 4, plotY + 9);
+  ctx2.fillText(fmtCurrency(vMax), barX - 4, plotY + 11);
   ctx2.fillText(fmtCurrency(vMin), barX - 4, plotY + plotH);
 
   // X-axis labels
   const cfg = SURFACE_V1_CONFIG;
-  ctx2.font = "10px 'JetBrains Mono','SF Mono',monospace";
-  ctx2.fillStyle = "#7C848D";
+  ctx2.font = "13px 'JetBrains Mono','SF Mono',monospace";
+  ctx2.fillStyle = "#A0A8B4";
   ctx2.textAlign = "center";
   const xTicks = 5;
   for (let i = 0; i < xTicks; i++) {
     const f = i / (xTicks - 1);
     const xPx = plotX + f * plotW;
     const val = cfg.x.min + f * (cfg.x.max - cfg.x.min);
-    ctx2.fillText((val * 100).toFixed(0) + "%", xPx, plotY + plotH + 12);
+    ctx2.fillText((val * 100).toFixed(0) + "%", xPx, plotY + plotH + 16);
   }
   // X-axis title
-  ctx2.fillStyle = "#555B66";
-  ctx2.fillText(cfg.x.label, plotX + plotW / 2, plotY + plotH + 24);
+  ctx2.font = "600 14px 'JetBrains Mono','SF Mono',monospace";
+  ctx2.fillStyle = "#8A9099";
+  ctx2.fillText(cfg.x.label, plotX + plotW / 2, plotY + plotH + 33);
 
   // Y-axis labels
+  ctx2.font = "13px 'JetBrains Mono','SF Mono',monospace";
   ctx2.textAlign = "right";
-  ctx2.fillStyle = "#7C848D";
+  ctx2.fillStyle = "#A0A8B4";
   const yTicks = 5;
   for (let i = 0; i < yTicks; i++) {
     const f = i / (yTicks - 1);
     const yPx = plotY + f * plotH;
     // Y axis: top = max, bottom = min (grid row 0 = min y)
     const val = cfg.y.max - f * (cfg.y.max - cfg.y.min);
-    ctx2.fillText((val * 100).toFixed(0) + "%", plotX - 4, yPx + 3);
+    ctx2.fillText((val * 100).toFixed(0) + "%", plotX - 6, yPx + 4);
   }
   // Y-axis title (rotated)
   ctx2.save();
-  ctx2.translate(10, plotY + plotH / 2);
+  ctx2.translate(14, plotY + plotH / 2);
   ctx2.rotate(-Math.PI / 2);
   ctx2.textAlign = "center";
-  ctx2.fillStyle = "#555B66";
+  ctx2.font = "600 14px 'JetBrains Mono','SF Mono',monospace";
+  ctx2.fillStyle = "#8A9099";
   ctx2.fillText(cfg.y.label, 0, 0);
   ctx2.restore();
 
@@ -5167,8 +5548,8 @@ function drawSurfaceOverlay(mx, my) {
 
   // Crosshair
   if (hovering) {
-    oc.strokeStyle = "rgba(255, 255, 255, 0.55)";
-    oc.lineWidth = 1;
+    oc.strokeStyle = "rgba(255, 255, 255, 0.6)";
+    oc.lineWidth = 1.5;
     // Vertical line (full plot height)
     oc.beginPath();
     oc.moveTo(mx + 0.5, p.y);
@@ -5186,15 +5567,15 @@ function drawSurfaceOverlay(mx, my) {
     const xVal = cfg.x.min + xFrac * (cfg.x.max - cfg.x.min);
     const yVal = cfg.y.min + yFrac * (cfg.y.max - cfg.y.min);
     const pillText = (xVal * 100).toFixed(1) + "% / " + (yVal * 100).toFixed(1) + "%";
-    oc.font = "10px 'JetBrains Mono','SF Mono',monospace";
+    oc.font = "13px 'JetBrains Mono','SF Mono',monospace";
     const tw = oc.measureText(pillText).width;
-    const pillW = tw + 10;
-    const pillH = 18;
+    const pillW = tw + 12;
+    const pillH = 22;
     // Position: offset from cursor, keep inside plot
-    let pillX = mx + 12;
-    let pillY = my - 24;
-    if (pillX + pillW > p.x + p.w) pillX = mx - pillW - 8;
-    if (pillY < p.y) pillY = my + 12;
+    let pillX = mx + 14;
+    let pillY = my - 28;
+    if (pillX + pillW > p.x + p.w) pillX = mx - pillW - 10;
+    if (pillY < p.y) pillY = my + 14;
     oc.fillStyle = "rgba(20, 23, 32, 0.88)";
     oc.beginPath();
     oc.roundRect(pillX, pillY, pillW, pillH, 3);
@@ -5205,6 +5586,9 @@ function drawSurfaceOverlay(mx, my) {
     oc.fillText(pillText, pillX + 5, pillY + pillH / 2);
     oc.textBaseline = "alphabetic";  // reset
   }
+
+  // Target highlight contour (always visible when target is set)
+  sfDrawTargetContour(oc);
 
   // Base-case marker (always visible)
   const bxF = (S.surfaceBaseX - cfg.x.min) / (cfg.x.max - cfg.x.min);
@@ -5267,6 +5651,16 @@ function sfUpdatePanel(value, xParam, yParam) {
   const yFill = document.getElementById("sf-axis-y-fill");
   if (xFill) xFill.style.width = (Math.max(0, Math.min(1, (xParam - cfg.x.min) / (cfg.x.max - cfg.x.min))) * 100) + "%";
   if (yFill) yFill.style.width = (Math.max(0, Math.min(1, (yParam - cfg.y.min) / (cfg.y.max - cfg.y.min))) * 100) + "%";
+  // Target delta
+  const deltaEl = document.getElementById("sf-target-delta");
+  if (deltaEl && S.sfTarget != null) {
+    const delta = value - S.sfTarget;
+    const sign = delta >= 0 ? "+" : "";
+    const cls = delta >= 0 ? "sf-delta-pos" : "sf-delta-neg";
+    deltaEl.innerHTML = 'vs target: <span class="' + cls + '">' + sign + fmtCurrency(delta).replace("$", "$") + '</span>';
+  } else if (deltaEl) {
+    deltaEl.innerHTML = "";
+  }
 }
 
 function sfResetPanel() {
@@ -5290,12 +5684,15 @@ function sfResetPanel() {
 
     const hit = sfGetValueAtPixel(mx, my);
     if (hit) {
+      S.sfLastHoverValue = hit;
       sfUpdatePanel(hit.value, hit.xParam, hit.yParam);
     }
   });
 
   ovl.addEventListener("mouseleave", function() {
     if (S.uiMode !== "surface") return;
+    // Note: sfLastHoverValue is intentionally NOT cleared here.
+    // It persists so "Set to cursor" can read the last hovered value.
     S.sfCursorX = -1;
     S.sfCursorY = -1;
     drawSurfaceOverlay(-1, -1);
@@ -5312,6 +5709,64 @@ function sfResetPanel() {
       if (valEl) valEl.textContent = (parseFloat(el.value) * 100).toFixed(1) + "%";
       // Trigger debounced surface refresh
       sfRefreshSurface();
+    });
+  }
+
+  // Target slider
+  const targetSlider = document.getElementById("sf-target-slider");
+  if (targetSlider) {
+    targetSlider.addEventListener("input", function() {
+      const v = parseFloat(targetSlider.value);
+      sfSetTarget(v);
+      drawSurfaceOverlay(S.sfCursorX, S.sfCursorY);
+      // Update delta in panel if hovering
+      if (S.sfCursorX >= 0) {
+        const hit = sfGetValueAtPixel(S.sfCursorX, S.sfCursorY);
+        if (hit) sfUpdatePanel(hit.value, hit.xParam, hit.yParam);
+      } else {
+        sfResetPanel();
+      }
+    });
+  }
+
+  // "Set to cursor" button — uses last hover value, not live cursor position
+  const setBtn = document.getElementById("sf-target-set");
+  if (setBtn) {
+    setBtn.addEventListener("click", function() {
+      const hit = S.sfLastHoverValue;
+      if (!hit) return;
+      // Snap to nice step
+      const step = S.sfNiceStep || 1;
+      const snapped = Math.round(hit.value / step) * step;
+      const slider = document.getElementById("sf-target-slider");
+      if (slider) slider.value = snapped;
+      sfSetTarget(snapped);
+      drawSurfaceOverlay(S.sfCursorX, S.sfCursorY);
+      // Update panel — show base values if not hovering, but with target delta
+      if (S.sfCursorX >= 0) {
+        sfUpdatePanel(hit.value, hit.xParam, hit.yParam);
+      } else {
+        sfResetPanel();
+      }
+    });
+  }
+
+  // "Clear" button
+  const clearBtn = document.getElementById("sf-target-clear");
+  if (clearBtn) {
+    clearBtn.addEventListener("click", function() {
+      sfSetTarget(null);
+      const slider = document.getElementById("sf-target-slider");
+      if (slider && S.sfColorMin != null && S.sfColorMax != null) {
+        slider.value = (S.sfColorMin + S.sfColorMax) / 2;
+      }
+      drawSurfaceOverlay(S.sfCursorX, S.sfCursorY);
+      if (S.sfCursorX >= 0) {
+        const hit = sfGetValueAtPixel(S.sfCursorX, S.sfCursorY);
+        if (hit) sfUpdatePanel(hit.value, hit.xParam, hit.yParam);
+      } else {
+        sfResetPanel();
+      }
     });
   }
 })();
